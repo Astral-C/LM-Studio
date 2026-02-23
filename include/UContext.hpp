@@ -46,14 +46,16 @@ class UEditorTab {
 public:
 
 	std::string mName;
-	void RenderModel();
+	void RenderModel(float dt);
     void RenderSceneTreePanel();
     void RenderDetailsPanel();
     void RenderGizmos(ImVec2 viewportPosition, ImVec2 viewportSize);
-
+    void ViewportClicked(int32_t id);
+    void SaveModel(std::filesystem::path filepath);
     UCamera& GetCamera() { return mCamera; }
 
     UEditorTab(std::filesystem::path modelPath);
+    UEditorTab(EModelType type);
     ~UEditorTab();
 };
 
@@ -65,6 +67,7 @@ class UContext {
 	float Rotate {25.0f}, Zoom { 500.0f };
 
 	bool mModelSelectNew { false };
+	bool mBinFBXImportOpen { false };
 	bool mModelSelectOpen { false };
 	bool mModelSelectSave { false };
 

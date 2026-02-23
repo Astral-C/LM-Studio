@@ -17,24 +17,16 @@ constexpr float LOOK_UP_MAX = glm::half_pi<float>() - glm::epsilon<float>();
 
 class UCamera {
 
+	float mAspectRatio;
 	float mNearPlane;
 	float mFarPlane;
 	float mFovy;
-	float mAspectRatio;
-
-	float mMoveSpeed;
-	float mMouseSensitivity;
-	int mWinWidth, mWinHeight;
-
-	void Rotate(float deltaTime, glm::vec2 mouseDelta);
 
 public:
 	UCamera();
 	~UCamera() {}
 
 	float mDistance;
+    glm::mat4 mProjection { glm::mat4(1.0f) }, mView { glm::mat4(1.0f) };
 	void Update(float deltaTime);
-
-	glm::mat4 mProjection, mView;
-
 };

@@ -347,8 +347,6 @@ namespace BIN {
     }
 
     const char* default_bin_vtx_shader_source = "#version 460\n\
-        uniform mat4 projection;\n\
-        uniform mat4 view;\n\
         uniform mat4 transform;\n\
         \
         layout(location = 0) in vec3 inPosition;\n\
@@ -361,7 +359,7 @@ namespace BIN {
         \
         void main()\n\
         {\
-            gl_Position = projection * view * transform * vec4(inPosition.x, inPosition.y, inPosition.z, 1.0);\n\
+            gl_Position = transform * vec4(inPosition.x, inPosition.y, inPosition.z, 1.0);\n\
             fragTexCoord = inTexCoord;\n\
             fragColor = inColor;\n\
         }\
@@ -1026,7 +1024,7 @@ namespace BIN {
             glUniformMatrix4fv(glGetUniformLocation(mProgram, "transform"), 1, 0, &mtx[0][0]);
         }
 
-        glUniformMatrix4fv(glGetUniformLocation(mProgram, "transform"), 1, 0, &(mtx)[0][0]);
+        glUniformMatrix4fv(glGetUniformLocation(mProgram, "transform"), 1, 0, &mtx[0][0]);
 
         for(auto element : node->mDrawElements){
             if(element.BatchIndex == -1) continue;
@@ -1058,10 +1056,8 @@ namespace BIN {
         }
     }
 
-    void Model::Draw(glm::mat4* projection, glm::mat4* view, glm::mat4* transform, int32_t id, bool selected, Animation* animation){
+    void Model::Draw(glm::mat4* transform, int32_t id, bool selected, Animation* animation){
         glUseProgram(mProgram);
-        glUniformMatrix4fv(glGetUniformLocation(mProgram, "projection"), 1, 0, &(*projection)[0][0]);
-        glUniformMatrix4fv(glGetUniformLocation(mProgram, "view"), 1, 0, &(*view)[0][0]);
         glUniform1i(glGetUniformLocation(mProgram, "pickID"), id);
         glUniform1i(glGetUniformLocation(mProgram, "selected"), selected);
 

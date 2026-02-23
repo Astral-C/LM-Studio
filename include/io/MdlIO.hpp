@@ -271,7 +271,7 @@ namespace MDL {
         glm::vec3 bbMax {0, 0, 0}, bbMin {0, 0, 0};
 
         CPathRenderer mSkeletonRenderer;
-        void Draw(glm::mat4* projection, glm::mat4* view, glm::mat4* transform, int32_t id, bool selected, TXP::Animation* materialAnimtion = nullptr, Animation* skeletalAnimation = nullptr);
+        void Draw(glm::mat4* transform, int32_t id, bool selected, TXP::Animation* materialAnimtion = nullptr, Animation* skeletalAnimation = nullptr);
         void Load(bStream::CStream* stream);
         void Save(bStream::CStream* stream);
 

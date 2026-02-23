@@ -205,7 +205,7 @@ namespace BIN {
         void ReadSceneGraphNode(bStream::CStream* stream, uint32_t index);
         void DrawScenegraphNode(uint32_t idx, glm::mat4 transform, Animation* animation);
 
-        void Draw(glm::mat4* projection, glm::mat4* view, glm::mat4* transform, int32_t id, bool selected, Animation* animation = nullptr);
+        void Draw(glm::mat4* transform, int32_t id, bool selected, Animation* animation = nullptr);
 
         void Load(bStream::CStream* stream);
         void Write(bStream::CStream* stream);

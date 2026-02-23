@@ -64,6 +64,10 @@ inline void ImportModelPane(const char *vFilter, IGFDUserDatas vUserDatas, bool 
     }
 }
 
+void UEditorTab::SaveModel(std::filesystem::path filepath){
+    bStream::CFileStream modelStream(filepath.string(), bStream::Endianess::Big, bStream::OpenMode::Out);
+    mModelFurniture->Write(&modelStream);
+}
 
 UEditorTab::UEditorTab(std::filesystem::path resPath){
     if(resPath.extension() == ".bin"){
@@ -73,15 +77,25 @@ UEditorTab::UEditorTab(std::filesystem::path resPath){
         mModelFurniture->Load(&modelStream);
         mName = resPath.filename().stem();
 
-        mCamera.mView = glm::lookAt(glm::vec3(-800, 800, 800), mModelFurniture->mGraphNodes[0].Position, glm::vec3(0,1,0));
-        mCamera.mDistance = glm::distance(glm::vec3(-800,800,800), mModelFurniture->mGraphNodes[0].Position);
-
     } else if(resPath.extension() == ".mdl"){
         mCurrentModelType = EModelType::Actor;
         bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
         mModelActor = std::make_unique<MDL::Model>();
         mModelActor->Load(&modelStream);
         mName = resPath.filename().stem();
+    }
+}
+
+UEditorTab::UEditorTab(EModelType type){
+    if(type == EModelType::Furniture){
+        mCurrentModelType = EModelType::Furniture;
+        mModelFurniture = std::make_unique<BIN::Model>();
+        mModelFurniture->mGraphNodes[0] = {};
+        mName = "New Bin";
+    } else if(type == EModelType::Actor){
+        mCurrentModelType = EModelType::Actor;
+        mModelActor = std::make_unique<MDL::Model>();
+        mName = "New Mdl";
     }
 }
 
@@ -133,7 +147,13 @@ bool UContext::Update(float deltaTime) {
 }
 
 void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t index){
-    bool open = ImGui::TreeNodeEx(std::format("Node {}", model->mGraphNodes[index].Index).c_str(), (SelectedResource == &model->mGraphNodes[index] ? ImGuiTreeNodeFlags_Selected : 0));
+    //bool open = ImGui::TreeNodeEx(std::format("Node {}", model->mGraphNodes[index].Index).c_str(), (SelectedResource == &model->mGraphNodes[index] ? ImGuiTreeNodeFlags_Selected : 0));
+    bool selected = (SelectedResource == &model->mGraphNodes[index] ? ImGuiTreeNodeFlags_Selected : 0);
+    bool open = UIUtil::RenderNodeSelectableTreeNode(std::format("Node {}", model->mGraphNodes[index].Index), selected, selected);
+
+    if(selected && SelectedResource != &model->mGraphNodes[index]){
+        SelectedResource = &model->mGraphNodes[index];
+    }
 
     if(index != 0 && ImGui::BeginPopupContextItem(std::format("##binScenegraphContextMenu{}", index).c_str())){
         if(ImGui::Selectable("Delete")){
@@ -157,28 +177,40 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
             SelectedResource = &model->mGraphNodes[index];
         }
 
-        uint16_t deleteIdx = UINT16_MAX;
-        for(int i = 0; i < model->mGraphNodes[index].mDrawElements.size(); i++){ //model->mGraphNodes[index].mDrawElements
-            ImGui::Text(std::format("Mesh Part {}", i).c_str());
 
-            if(ImGui::IsItemClicked(0)){
-                SelectedType = SelectedResourceType::DrawElement;
-                SelectedResource = &model->mGraphNodes[index].mDrawElements[i];
-            }
+        bool childrenOpen = ImGui::TreeNodeEx(ICON_FK_CUBE "  Draw Elements", model->mGraphNodes[index].mDrawElements.size() == 0 ? ImGuiTreeNodeFlags_Leaf : 0);
+        ImGui::SameLine();
+        ImGui::Spacing();
+        ImGui::SameLine();
+        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        if(ImGui::IsItemClicked(0)){
+            model->mGraphNodes[index].mDrawElements.push_back({});
+        }
+        if(childrenOpen){
+            uint16_t deleteIdx = UINT16_MAX;
+            for(int i = 0; i < model->mGraphNodes[index].mDrawElements.size(); i++){ //model->mGraphNodes[index].mDrawElements
+                ImGui::Text(std::format("Mesh Part {}", i).c_str());
 
-            if(ImGui::BeginPopupContextItem(std::format("##drawElementResourceContextMenu{}", i).c_str())){
-                if(ImGui::Selectable("Delete")){
-                    deleteIdx = i;
+                if(ImGui::IsItemClicked(0)){
+                    SelectedType = SelectedResourceType::DrawElement;
+                    SelectedResource = &model->mGraphNodes[index].mDrawElements[i];
                 }
-                ImGui::EndPopup();
+
+                if(ImGui::BeginPopupContextItem(std::format("##drawElementResourceContextMenu{}", i).c_str())){
+                    if(ImGui::Selectable("Delete")){
+                        deleteIdx = i;
+                    }
+                    ImGui::EndPopup();
+                }
             }
+
+            if(deleteIdx != UINT16_MAX){
+                model->mGraphNodes[index].mDrawElements.erase(model->mGraphNodes[index].mDrawElements.begin() + deleteIdx);
+            }
+            ImGui::TreePop();
         }
 
-        if(deleteIdx != UINT16_MAX){
-            model->mGraphNodes[index].mDrawElements.erase(model->mGraphNodes[index].mDrawElements.begin() + deleteIdx);
-        }
-
-        bool childrenOpen = ImGui::TreeNodeEx(ICON_FK_LEAF " Children", model->mGraphNodes[index].ChildIndex == -1 ? ImGuiTreeNodeFlags_Leaf : 0);
+        childrenOpen = ImGui::TreeNodeEx(ICON_FK_LEAF " Children", model->mGraphNodes[index].ChildIndex == -1 ? ImGuiTreeNodeFlags_Leaf : 0);
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
@@ -213,15 +245,6 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
             ImGui::TreePop();
         }
 
-
-        ImGui::Spacing();
-        ImGui::SameLine();
-        ImGui::Text(ICON_FK_CUBE " Draw Elements");
-        ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
-        if(ImGui::IsItemClicked(0)){
-            model->mGraphNodes[index].mDrawElements.push_back({});
-        }
         ImGui::TreePop();
 
     }
@@ -279,12 +302,21 @@ void UEditorTab::MdlTreeNodeUI(std::unique_ptr<MDL::Model>& model, uint32_t inde
     }
 }
 
-void UEditorTab::RenderModel(){
+void UEditorTab::RenderModel(float dt){
+    mCamera.Update(dt);
+    glm::mat4 mvp = mCamera.mProjection * mCamera.mView * Identity;
     if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
-       	mModelFurniture->Draw(&mCamera.mProjection, &mCamera.mView, &Identity, 0, false, nullptr);
+       	mModelFurniture->Draw(&mvp, 0, false, nullptr);
     } else if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
-       	mModelActor->Draw(&mCamera.mProjection, &mCamera.mView, &Identity, 0, false, nullptr, nullptr);
+       	mModelActor->Draw(&mvp, 0, false, nullptr, nullptr);
         mModelActor->mSkeletonRenderer.Draw(&mCamera);
+    }
+}
+
+void UEditorTab::ViewportClicked(int32_t id){
+    if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
+        SelectedType = SelectedResourceType::GraphNode;
+        SelectedResource = &mModelFurniture->mGraphNodes[id];
     }
 }
 
@@ -298,7 +330,7 @@ void UEditorTab::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
     //mCamera.PostManipulate(view, proj); // stupid
 
     if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr && SelectedType == SelectedResourceType::GraphNode){
-        if(ImGuizmo::Manipulate(&mCamera.mView[0][0], &mCamera.mProjection[0][0], ImGuizmo::OPERATION::TRANSLATE | ImGuizmo::OPERATION::ROTATE | ImGuizmo::OPERATION::SCALE, ImGuizmo::WORLD, &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Transform[0][0])){
+        if(ImGuizmo::Manipulate(&mCamera.mView[0][0], &mCamera.mProjection[0][0], ImGuizmo::OPERATION::TRANSLATE | ImGuizmo::OPERATION::ROTATE | ImGuizmo::OPERATION::SCALE, ImGuizmo::LOCAL, &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Transform[0][0])){
             ImGuizmo::DecomposeMatrixToComponents(&static_cast<BIN::SceneGraphNode*>(SelectedResource)->Transform[0][0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Position[0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Rotation[0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Scale[0]);
         }
     }
@@ -915,7 +947,8 @@ void UContext::Render(float deltaTime) {
 		mPrevWinWidth = winSize.x;
 		mPrevWinHeight = winSize.y;
 
-		glClearColor(0.19f, 0.19f, 0.19f, 1.0f);
+		glViewport(0, 0, winSize.x, winSize.y);
+		glClearColor(0.19f, 0.19f, 0.19f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		int32_t unused = -1;
@@ -923,16 +956,24 @@ void UContext::Render(float deltaTime) {
 		glClearTexImage(mPickTex, 0, GL_RED_INTEGER, GL_INT, &unused);
 
 		// render tab content
-		if(mSelectedTab != nullptr) mSelectedTab->RenderModel();
+		if(mSelectedTab != nullptr){
+		    mSelectedTab->RenderModel(deltaTime);
+		}
 
+		ImGui::GetWindowDrawList()->AddRectFilledMultiColor(cursorPos, cursorPos + winSize, 0xFF303030, 0xFF303030, 0xFF202020, 0xFF202020);
+		ImGui::Image(static_cast<uintptr_t>(mViewTex), winSize, {0.0f, 1.0f}, {1.0f, 0.0f});
+		if(ImGui::IsItemClicked(0) && !ImGuizmo::IsOver()){
+    		int32_t id;
+    		ImVec2 mousePos = ImGui::GetMousePos();
+    		glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    		glReadBuffer(GL_COLOR_ATTACHMENT1);
+    		glReadPixels(mousePos.x - cursorPos.x, ((uint32_t)winSize.y) - (mousePos.y - cursorPos.y), 1, 1, GL_RED_INTEGER, GL_INT, (void*)&id);
+            if(id != -1) mSelectedTab->ViewportClicked(id);
+		}
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+		if(mSelectedTab != nullptr) mSelectedTab->RenderGizmos(cursorPos, winSize);
 
-		ImVec2 pos = ImGui::GetCursorScreenPos();
-		ImGui::Image(static_cast<uintptr_t>(mViewTex), winSize, {0.0f, 1.0f}, {1.0f, 0.0f});
-		if(ImGui::IsItemHovered() && ImGui::GetIO().MouseWheel != 0.0f){
-		}
-		if(mSelectedTab != nullptr) mSelectedTab->RenderGizmos(pos, winSize);
 	ImGui::End();
 
 	ImGui::SetNextWindowClass(&mainWindowOverride);
@@ -960,6 +1001,22 @@ void UContext::RenderMenuBar() {
 	ImGui::BeginMainMenuBar();
 
 	if (ImGui::BeginMenu("File")) {
+	    if (ImGui::BeginMenu("New")) {
+			if (ImGui::MenuItem("Bin")) {
+    			mTabs.push_back(std::make_shared<UEditorTab>(EModelType::Furniture));
+    			mSelectedTab = mTabs.back();
+    			mSelectedTab->mName = "New Bin";
+			}
+			if (ImGui::MenuItem("Mdl")) {
+    			mTabs.push_back(std::make_shared<UEditorTab>(EModelType::Actor));
+    			mSelectedTab = mTabs.back();
+    			mSelectedTab->mName = "New Mdl";
+			}
+			if(ImGui::MenuItem("Bin From FBX")){
+                mBinFBXImportOpen = true;
+			}
+            ImGui::EndMenu();
+		}
 		if (ImGui::MenuItem("Open")) {
 			mModelSelectOpen = true;
 		}
@@ -975,12 +1032,12 @@ void UContext::RenderMenuBar() {
 
 	if (mModelSelectOpen) {
 		IGFD::FileDialogConfig config;
-		ImGuiFileDialog::Instance()->OpenDialog("OpenModelDialog", "Open Model", ".bin,.mdl,.anm", config);
+		ImGuiFileDialog::Instance()->OpenDialog("OpenModelDialog", "Open Model", "Room Model (*.bin){.bin},Actor Model (*.mdl){.mdl}, Furniture Animation (*.anm){.anm}", config);
 	}
 
 	if (mModelSelectSave) {
 		IGFD::FileDialogConfig config;
-		ImGuiFileDialog::Instance()->OpenDialog("SaveModelDialog", "Save Model", ".bin,.mdl", config);
+		ImGuiFileDialog::Instance()->OpenDialog("SaveModelDialog", "Save Model", "Room Model (*.bin){.bin},Actor Model (*.mdl){.mdl}", config);
 	}
 
 	if (ImGuiFileDialog::Instance()->Display("OpenModelDialog")) {
@@ -1001,7 +1058,7 @@ void UContext::RenderMenuBar() {
 		if (ImGuiFileDialog::Instance()->IsOk()) {
 			std::string FilePath = ImGuiFileDialog::Instance()->GetCurrentFileName();
 
-			bStream::CFileStream modelStream(FilePath, bStream::Endianess::Big, bStream::OpenMode::Out);
+			if(mSelectedTab != nullptr) mSelectedTab->SaveModel(FilePath);
 
 			mModelSelectSave = false;
 		} else {

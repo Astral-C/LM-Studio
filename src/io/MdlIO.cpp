@@ -245,8 +245,6 @@ namespace MDL {
     }
 
     const char* default_mdl_vtx_shader_source = "#version 460\n\
-        uniform mat4 projection;\n\
-        uniform mat4 view;\n\
         uniform mat4 transform;\n\
         uniform mat4 joints[255];\n\
         \
@@ -272,7 +270,7 @@ namespace MDL {
             if(inJoints[0] == -1){\n\
                 pos = vec4(inPosition.x, inPosition.y, inPosition.z, 1.0);\n\
             }\n\
-            gl_Position = projection * view * transform * vec4(pos.x, pos.y, pos.z, 1.0);\n\
+            gl_Position = transform * vec4(pos.x, pos.y, pos.z, 1.0);\n\
             fragTexCoord = inTexCoord;\n\
             fragColor = inColor;\n\
         }\
@@ -871,7 +869,7 @@ namespace MDL {
         if(index == 0) mSkeletonRenderer.UpdateData();
     }
 
-    void Model::Draw(glm::mat4* projection, glm::mat4* view, glm::mat4* transform, int32_t id, bool selected, TXP::Animation* materialAnimtion, Animation* skeletalAnimation){
+    void Model::Draw(glm::mat4* transform, int32_t id, bool selected, TXP::Animation* materialAnimtion, Animation* skeletalAnimation){
 
         std::vector<glm::mat4> skeleton(mSkeleton.size());
         mSkeletonRenderer.mPaths.clear();
@@ -896,8 +894,6 @@ namespace MDL {
         }
 
         glUseProgram(mProgram);
-        glUniformMatrix4fv(glGetUniformLocation(mProgram, "projection"), 1, 0, &(*projection)[0][0]);
-        glUniformMatrix4fv(glGetUniformLocation(mProgram, "view"), 1, 0, &(*view)[0][0]);
         glUniformMatrix4fv(glGetUniformLocation(mProgram, "transform"), 1, 0, &(*transform)[0][0]);
         glUniformMatrix4fv(glGetUniformLocation(mProgram, "joints"), skeleton.size(), 0, &skeleton[0][0][0]);
         glUniform1i(glGetUniformLocation(mProgram, "pickID"), id);
