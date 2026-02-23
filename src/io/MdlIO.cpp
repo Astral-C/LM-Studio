@@ -84,7 +84,7 @@ namespace MDL {
         stream->writeUInt8(AlphaFlag);
         stream->writeUInt8(TevStageCount);
         stream->writeUInt8(Unknown2);
-        stream->readBytesTo(Padding, sizeof(Padding));
+        stream->writeBytes(Padding, sizeof(Padding));
 
         for(int i = 0; i < 8; i++){
             stream->writeUInt16(TevStages[i].Unknown);

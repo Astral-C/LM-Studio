@@ -72,7 +72,7 @@ bool UViewerApplication::Setup() {
 	ImGui_ImplGlfw_InitForOpenGL(mWindow, true);
 	ImGui_ImplOpenGL3_Init("#version 150");
 
-	std::filesystem::path RES_BASE_PATH = std::filesystem::current_path();
+	std::filesystem::path RES_BASE_PATH = std::filesystem::current_path() / "res";
 
 	if(std::filesystem::exists((RES_BASE_PATH / "font" / "NotoSansJP-Regular.otf"))){
 		io.Fonts->AddFontFromFileTTF((RES_BASE_PATH / "font" / "NotoSansJP-Regular.otf").string().c_str(), 16.0f, NULL, io.Fonts->GetGlyphRangesJapanese());

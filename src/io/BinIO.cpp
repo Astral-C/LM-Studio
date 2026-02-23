@@ -892,7 +892,7 @@ namespace BIN {
         stream->writeOffsetAt32(36);
         for(int i = 0; i < newTexCoords.size(); i++){
             stream->writeFloat(newTexCoords[i].x);
-            stream->writeFloat(1.0f-newTexCoords[i].y);
+            stream->writeFloat(newTexCoords[i].y);
         }
         stream->alignTo(32);
 

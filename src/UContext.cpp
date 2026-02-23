@@ -24,6 +24,7 @@
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize2.h"
 #include <format>
+#include "ImGuiNotify.hpp"
 
 glm::mat4 Identity(1.0f);
 
@@ -66,7 +67,12 @@ inline void ImportModelPane(const char *vFilter, IGFDUserDatas vUserDatas, bool 
 
 void UEditorTab::SaveModel(std::filesystem::path filepath){
     bStream::CFileStream modelStream(filepath.string(), bStream::Endianess::Big, bStream::OpenMode::Out);
-    mModelFurniture->Write(&modelStream);
+    if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
+        mModelFurniture->Write(&modelStream);
+    }
+    if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
+        mModelActor->Save(&modelStream);
+    }
 }
 
 UEditorTab::UEditorTab(std::filesystem::path resPath){
@@ -780,6 +786,35 @@ void UEditorTab::RenderDetailsPanel(){
                 break;
             }
         }
+        if (ImGuiFileDialog::Instance()->Display("replaceTextureImageDialog")) {
+    		if (ImGuiFileDialog::Instance()->IsOk()) {
+    			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
+                if(SelectedResource != nullptr){
+                    int w, h, channels;
+                    unsigned char* img = stbi_load(FilePath.c_str(), &w, &h, &channels, 4);
+                    if(img != nullptr){
+                        reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->SetImage(img, w*h*4, w, h);
+                        stbi_image_free(img);
+                    } else {
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, std::format("Failed to load image\nPath: {}", FilePath).data()});
+                    }
+                }
+      		}
+
+    		ImGuiFileDialog::Instance()->Close();
+    	}
+        if (ImGuiFileDialog::Instance()->Display("exportTextureImageDialog")) {
+    		if (ImGuiFileDialog::Instance()->IsOk()) {
+    			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
+                if(SelectedResource != nullptr){
+                    if(!stbi_write_png(FilePath.c_str(), reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->Width, reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->Height, 4, reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->ImageData, 4*reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->Width)){
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, std::format("Failed to Write Image\nPath: {}", FilePath).data()});
+                    }
+                }
+      		}
+
+    		ImGuiFileDialog::Instance()->Close();
+    	}
     } else if(mCurrentModelType == EModelType::Actor && SelectedType != SelectedResourceType::None && SelectedResource != nullptr){
         switch(SelectedType){
             case SelectedResourceType::GraphNode: {
@@ -990,7 +1025,13 @@ void UContext::Render(float deltaTime) {
 	}
 	ImGui::End();
 
-
+	// Notifications style setup
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.f); // Disable round borders
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.f); // Disable borders
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.00f)); // Background color
+    ImGui::RenderNotifications();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(1);
 	//mGrid.Render({(sin(Rotate) * (Zoom * 2)), Zoom, (cos(Rotate) * (Zoom * 2))}, mCamera.GetProjectionMatrix(), mCamera.GetViewMatrix());
 }
 
@@ -1056,7 +1097,7 @@ void UContext::RenderMenuBar() {
 
 	if (ImGuiFileDialog::Instance()->Display("SaveModelDialog")) {
 		if (ImGuiFileDialog::Instance()->IsOk()) {
-			std::string FilePath = ImGuiFileDialog::Instance()->GetCurrentFileName();
+			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
 
 			if(mSelectedTab != nullptr) mSelectedTab->SaveModel(FilePath);
 
