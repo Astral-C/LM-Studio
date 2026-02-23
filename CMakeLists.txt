@@ -21,6 +21,6 @@ file(GLOB_RECURSE LMMODELVIEW_SRC
 )
 
 add_executable(LMStudio ${LMMODELVIEW_SRC})
-target_include_directories(LMStudio PUBLIC include include/util lib/glad/include lib/bStream lib/ImGuiFileDialog/ImGuiFileDialog lib/glfw/include lib/gctoolsplusplus/include lib/TriStripper/include)
+target_include_directories(LMStudio PUBLIC include include/util lib/glm/glm lib/glad/include lib/bStream lib/ImGuiFileDialog/ImGuiFileDialog lib/glfw/include lib/gctoolsplusplus/include lib/TriStripper/include)
 
 target_link_libraries(LMStudio PUBLIC imgui ImGuiFileDialog glfw gctools++ TriStripper)
