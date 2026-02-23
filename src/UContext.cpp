@@ -81,14 +81,14 @@ UEditorTab::UEditorTab(std::filesystem::path resPath){
         bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
         mModelFurniture = std::make_unique<BIN::Model>();
         mModelFurniture->Load(&modelStream);
-        mName = resPath.filename().stem();
+        mName = resPath.filename().stem().string();
 
     } else if(resPath.extension() == ".mdl"){
         mCurrentModelType = EModelType::Actor;
         bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
         mModelActor = std::make_unique<MDL::Model>();
         mModelActor->Load(&modelStream);
-        mName = resPath.filename().stem();
+        mName = resPath.filename().stem().string();
     }
 }
 
