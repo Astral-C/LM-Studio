@@ -611,8 +611,8 @@ void UEditorTab::RenderSceneTreePanel(){
                     ImVec2 pos = ImGui::GetCursorScreenPos();
                     ImDrawList* list = ImGui::GetWindowDrawList();
                     ImVec2 p1 = pos-ImGui::GetStyle().FramePadding, p2 = pos+ImGui::CalcTextSize(name.c_str())+ImVec2(19.f,3.f)+ImVec2(ImGui::GetStyle().FramePadding.x*2,0.0f);
-                    list->AddRectFilled(p1, p2, ImColor(ImGui::GetStyle().Colors[ImGuiCol_Border]), 3.f);
-                    list->AddRect(p1, p2, ImColor(0x32, 0x32, 0x32, 0xFF), 3.f, 0, 1.5f);
+                    list->AddRectFilled(p1, p2, ImColor(0x32, 0x32, 0x32, 0xFF), 3.f);
+                    list->AddRect(p1, p2, ImColor(ImGui::GetStyle().Colors[ImGuiCol_Border]), 3.f, 0, 1.5f);
                     ImGui::Image(static_cast<uintptr_t>(texture.TextureID), {16, 16});
                     ImGui::SameLine();
                     ImGui::Text("Texture %d", idx);

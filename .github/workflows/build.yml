@@ -72,14 +72,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir LMStudio-build
-          cp -r res LMStudio-build/res
           ls build
           cp build/LMStudio LMStudio-build/LMStudio
       - name: Create App Package Windows
         if: runner.os == 'Windows'
         run: |
           mkdir LMStudio-build
-          cp -r res LMStudio-build/res
           ls build
           cp build/LMStudio.exe LMStudio-build/LMStudio.exe
       - name: Upload App Windows

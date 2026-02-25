@@ -12,8 +12,9 @@
 #include <string>
 #include <iostream>
 
-#include "IconsForkAwesome.h"
 #include "IconsLucide.h"
+#include "lucide.h"
+#include "noto_sans_jp_regular.h"
 
 static UContext* ResizeContext = nullptr;
 
@@ -75,19 +76,18 @@ bool UViewerApplication::Setup() {
 
 	std::filesystem::path RES_BASE_PATH = std::filesystem::current_path() / "res";
 
-	if(std::filesystem::exists((RES_BASE_PATH / "font" / "NotoSansJP-Regular.otf"))){
-		io.Fonts->AddFontFromFileTTF((RES_BASE_PATH / "font" / "NotoSansJP-Regular.otf").string().c_str(), 16.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
-	}
+	ImFontConfig noto_config;
+	noto_config.FontDataOwnedByAtlas = false;
+	io.Fonts->AddFontFromMemoryTTF((void*)res_font_NotoSansJP_Regular_otf, res_font_NotoSansJP_Regular_otf_size, 16.0f, &noto_config, io.Fonts->GetGlyphRangesJapanese());
 
-	if(std::filesystem::exists((RES_BASE_PATH / "font" / "lucide.ttf"))){
-		static const ImWchar icons_ranges[] = { ICON_MIN_LC, ICON_MAX_16_LC, 0 };
-		ImFontConfig icons_config;
-		icons_config.MergeMode = true;
-		icons_config.PixelSnapH = true;
-		icons_config.GlyphOffset.y = 2.25f;
-		icons_config.GlyphMinAdvanceX = 14.0f;
-		io.Fonts->AddFontFromFileTTF((RES_BASE_PATH / "font" / "lucide.ttf").string().c_str(), icons_config.GlyphMinAdvanceX, &icons_config, icons_ranges );
-	}
+	static const ImWchar icons_ranges[] = { ICON_MIN_LC, ICON_MAX_16_LC, 0 };
+	ImFontConfig icons_config;
+	icons_config.FontDataOwnedByAtlas = false;
+	icons_config.MergeMode = true;
+	icons_config.PixelSnapH = true;
+	icons_config.GlyphOffset.y = 2.25f;
+	icons_config.GlyphMinAdvanceX = 14.0f;
+	io.Fonts->AddFontFromMemoryTTF((void*)res_font_lucide_ttf, res_font_lucide_ttf_size, icons_config.GlyphMinAdvanceX, &icons_config, icons_ranges);
 
 	ImGuiStyle& style = ImGui::GetStyle();
 	style.Colors[ImGuiCol_TitleBg] = ImColor(0x22, 0x22, 0x22, 0xFF);
