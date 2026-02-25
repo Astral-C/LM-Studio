@@ -1,6 +1,8 @@
 #include "UContext.hpp"
 
+#include "Archive.hpp"
 #include "Camera.hpp"
+#include "IconsLucide.h"
 #include "io/BinIO.hpp"
 #include "io/MdlIO.hpp"
 #include "ufbx.h"
@@ -9,6 +11,8 @@
 #include "IconsForkAwesome.h"
 #include "ImGuiFileDialog.h"
 #include "ImGuizmo.h"
+#include "ImSequencer.h"
+#include <cstddef>
 #include <filesystem>
 #include <glad/glad.h>
 #include <glm/ext/matrix_transform.hpp>
@@ -25,6 +29,8 @@
 #include "stb_image_resize2.h"
 #include <format>
 #include "ImGuiNotify.hpp"
+#include "tiny_obj_loader.h"
+#include "tri_stripper.h"
 
 glm::mat4 Identity(1.0f);
 
@@ -40,7 +46,7 @@ std::vector<const char*> WrapModes {
     "Mirror"
 };
 
-std::vector<const char*> TextureFormatNames {
+std::vector<const char*> TextureFormatNamesBin {
     "I4",
     "I8",
     "IA4",
@@ -58,6 +64,24 @@ std::vector<const char*> TextureFormatNames {
     "CMPR"
 };
 
+std::vector<const char*> TextureFormatNamesMdl {
+    "???",
+    "???",
+    "???",
+    "I4",
+    "I8",
+    "???",
+    "???",
+    "RGB565",
+    "RGB5A3",
+    "???",
+    "CMPR",
+    "???",
+    "???",
+    "???",
+    "???"
+};
+
 inline void ImportModelPane(const char *vFilter, IGFDUserDatas vUserDatas, bool *vCantContinue){
     ImGui::Text("Import Settings");
     if(std::string(vFilter) == ".fbx"){
@@ -66,6 +90,9 @@ inline void ImportModelPane(const char *vFilter, IGFDUserDatas vUserDatas, bool 
 }
 
 void UEditorTab::SaveModel(std::filesystem::path filepath){
+    if(filepath.empty()){
+        filepath = mModelPath;
+    }
     bStream::CFileStream modelStream(filepath.string(), bStream::Endianess::Big, bStream::OpenMode::Out);
     if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
         mModelFurniture->Write(&modelStream);
@@ -76,19 +103,23 @@ void UEditorTab::SaveModel(std::filesystem::path filepath){
 }
 
 UEditorTab::UEditorTab(std::filesystem::path resPath){
-    if(resPath.extension() == ".bin"){
+    mModelPath = resPath;
+    mName = resPath.filename().stem().string()+"##"+resPath.string();
+    bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
+    if(resPath.extension() == ".arc" || resPath.extension() == ".szp"){
+        mCurrentModelType = EModelType::None;
+        mModelArchive = Archive::Rarc::Create();
+        mModelArchive->Load(&modelStream);
+    } else if(resPath.extension() == ".bin"){
         mCurrentModelType = EModelType::Furniture;
-        bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
         mModelFurniture = std::make_unique<BIN::Model>();
         mModelFurniture->Load(&modelStream);
-        mName = resPath.filename().stem().string()+"##"+resPath.string();
 
     } else if(resPath.extension() == ".mdl"){
         mCurrentModelType = EModelType::Actor;
         bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
         mModelActor = std::make_unique<MDL::Model>();
         mModelActor->Load(&modelStream);
-        mName = resPath.filename().stem().string()+"##"+resPath.string();
     }
 }
 
@@ -97,10 +128,12 @@ UEditorTab::UEditorTab(EModelType type){
         mCurrentModelType = EModelType::Furniture;
         mModelFurniture = std::make_unique<BIN::Model>();
         mModelFurniture->mGraphNodes[0] = {};
+        mModelPath = std::filesystem::current_path() / "new_bin.bin";
         mName = "New Bin";
     } else if(type == EModelType::Actor){
         mCurrentModelType = EModelType::Actor;
         mModelActor = std::make_unique<MDL::Model>();
+        mModelPath = std::filesystem::current_path() / "new_mdl.mdl";
         mName = "New Mdl";
     }
 }
@@ -162,6 +195,9 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
     }
 
     if(index != 0 && ImGui::BeginPopupContextItem(std::format("##binScenegraphContextMenu{}", index).c_str())){
+        if(ImGui::Selectable("Center Camera on Node")){
+            mCamera.SetOrbitPoint(model->mGraphNodes[index].Position);
+        }
         if(ImGui::Selectable("Delete")){
             if(model->mGraphNodes[index].PreviousSibIndex != -1){
                 model->mGraphNodes[model->mGraphNodes[index].PreviousSibIndex].NextSibIndex = model->mGraphNodes[index].NextSibIndex;
@@ -184,11 +220,11 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
         }
 
 
-        bool childrenOpen = ImGui::TreeNodeEx(ICON_FK_CUBE "  Draw Elements", model->mGraphNodes[index].mDrawElements.size() == 0 ? ImGuiTreeNodeFlags_Leaf : 0);
+        bool childrenOpen = ImGui::TreeNodeEx(ICON_LC_BOXES "  Draw Elements", model->mGraphNodes[index].mDrawElements.size() == 0 ? ImGuiTreeNodeFlags_Leaf : 0);
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        ImGui::Text(ICON_LC_CIRCLE_PLUS);
         if(ImGui::IsItemClicked(0)){
             model->mGraphNodes[index].mDrawElements.push_back({});
         }
@@ -216,11 +252,11 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
             ImGui::TreePop();
         }
 
-        childrenOpen = ImGui::TreeNodeEx(ICON_FK_LEAF " Children", model->mGraphNodes[index].ChildIndex == -1 ? ImGuiTreeNodeFlags_Leaf : 0);
+        childrenOpen = ImGui::TreeNodeEx(ICON_LC_LEAF " Children", model->mGraphNodes[index].ChildIndex == -1 ? ImGuiTreeNodeFlags_Leaf : 0);
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        ImGui::Text(ICON_LC_CIRCLE_PLUS);
         if(ImGui::IsItemClicked(0)){
             int id = model->mGraphNodes.size();
             for(int idx = 0; idx < model->mGraphNodes.size(); idx++){
@@ -285,7 +321,7 @@ void UEditorTab::MdlTreeNodeUI(std::unique_ptr<MDL::Model>& model, uint32_t inde
             }
         }
 
-        bool childrenOpen = ImGui::TreeNodeEx(ICON_FK_LEAF " Children", model->mGraphNodes[index].ChildIndexShift > 0 ? ImGuiTreeNodeFlags_Leaf : 0);
+        bool childrenOpen = ImGui::TreeNodeEx(ICON_LC_LEAF " Children", model->mGraphNodes[index].ChildIndexShift > 0 ? ImGuiTreeNodeFlags_Leaf : 0);
         if(childrenOpen){
             if(model->mGraphNodes[index].ChildIndexShift > 0) MdlTreeNodeUI(model, index + model->mGraphNodes[index].ChildIndexShift);
             ImGui::TreePop();
@@ -294,9 +330,9 @@ void UEditorTab::MdlTreeNodeUI(std::unique_ptr<MDL::Model>& model, uint32_t inde
 
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_CUBE " Draw Elements");
+        ImGui::Text(ICON_LC_BOXES " Draw Elements");
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        ImGui::Text(ICON_LC_CIRCLE_PLUS);
         if(ImGui::IsItemClicked(0)){
             //model->mGraphNodes[index].mDrawElements.push_back({});
         }
@@ -342,26 +378,75 @@ void UEditorTab::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
     }
 }
 
+void UEditorTab::RenderTimelineAndRes(){
+    if(mModelArchive != nullptr){
+        ImGui::BeginGroup();
+        if(ImGui::BeginListBox("##animFilesListBox")){
+            if(mCurrentModelType == EModelType::Furniture && mModelArchive->GetFolder("anm") != nullptr){
+                for(auto file : mModelArchive->GetFolder("anm")->GetFiles()){
+                    float width = ImGui::CalcTextSize(file->GetName().c_str()).x;
+                    ImGui::SetNextItemWidth(width + 3);
+                    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10);
+                    if(ImGui::Selectable(file->GetName().c_str())){
+                        // load furniture animation, set up timeline
+                    }
+                    ImGui::PopStyleVar(1);
+                }
+            }
+            ImGui::EndListBox();
+        }
+        ImGui::EndGroup();
+        ImGui::SameLine();
+        ImGui::Text("Timeline Here");
+    } else if(mCurrentModelType == EModelType::Furniture && mFurnitureAnimation != nullptr){
+        ImGui::Text("Timeline Here");
+    }  else if(mCurrentModelType == EModelType::Actor && mActorSkeletalAnimation != nullptr){
+        ImGui::Text("Timeline Here");
+    }
+};
+
+void UEditorTab::RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir){
+    if(ImGui::TreeNode(dir->GetName().c_str())){
+        for(auto folder : dir->GetSubdirectories()){
+            RenderArcFolderTreeNode(folder);
+        }
+
+        for(auto file : dir->GetFiles()){
+            ImGui::Spacing();
+            ImGui::SameLine();
+            std::string icon = ICON_LC_FILE;
+            if(file->GetName().ends_with(".bin") || file->GetName().ends_with(".mdl")){
+                icon = ICON_LC_PYRAMID;
+            } else if (file->GetName().ends_with(".anm") || file->GetName().ends_with(".key")){
+                icon = ICON_LC_FILM;
+            }
+
+            if(ImGui::Selectable(std::format("{} {}", icon, file->GetName()).c_str())){
+                if(file->GetName().ends_with(".bin")){
+                    mCurrentModelType = EModelType::Furniture;
+                    bStream::CMemoryStream model(file->GetData(), file->GetSize(), bStream::Endianess::Big, bStream::OpenMode::In);
+                    mModelFurniture = std::make_unique<BIN::Model>();
+                    mModelFurniture->Load(&model);
+                    mModelChanged = false;
+                }
+            }
+        }
+        ImGui::TreePop();
+    }
+}
+
 void UEditorTab::RenderSceneTreePanel(){
     if(mCurrentModelType == EModelType::Furniture){
         ImGui::Text("SceneGraph");
-        ImGui::SameLine();
-        float widthNeeded = ImGui::CalcTextSize("Save").x + ImGui::GetStyle().FramePadding.x * 2.f;
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - widthNeeded);
-        if(ImGui::Button("Save")){
-            //bStream::CMemoryStream modelData(12, bStream::Endianess::Big, bStream::OpenMode::Out);
-            //mModelFurniture->Write(&modelData);
-            // write bin file
-        }
         ImGui::Separator();
         BinTreeNodeUI(mModelFurniture, 0);
         ImGui::Text("Resources");
         ImGui::Separator();
-        bool  open = ImGui::TreeNode(ICON_FK_CUBE " Batches");
+        bool  open = ImGui::TreeNode(ICON_LC_BOXES " Batches");
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        ImGui::Text(ICON_LC_CIRCLE_PLUS);
         if(ImGui::IsItemClicked(0)){
             int id = mModelFurniture->mBatches.size();
             for(int idx = 0; idx < mModelFurniture->mBatches.size(); idx++){
@@ -405,11 +490,11 @@ void UEditorTab::RenderSceneTreePanel(){
             }
             ImGui::TreePop();
         }
-        open = ImGui::TreeNode(ICON_FK_PAINT_BRUSH " Materials");
+        open = ImGui::TreeNode(ICON_LC_PAINTBRUSH " Materials");
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        ImGui::Text(ICON_LC_CIRCLE_PLUS);
         if(ImGui::IsItemClicked(0)){
             int id = mModelFurniture->mMaterials.size();
             for(int idx = 0; idx < mModelFurniture->mMaterials.size(); idx++){
@@ -453,11 +538,11 @@ void UEditorTab::RenderSceneTreePanel(){
             }
             ImGui::TreePop();
         }
-        open = ImGui::TreeNode(ICON_FK_PAINT_BRUSH " Samplers");
+        open = ImGui::TreeNode(ICON_LC_IMAGES " Samplers");
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        ImGui::Text(ICON_LC_CIRCLE_PLUS);
 
         if(ImGui::IsItemClicked(0)){
             int id = mModelFurniture->mSamplers.size();
@@ -502,11 +587,11 @@ void UEditorTab::RenderSceneTreePanel(){
             ImGui::TreePop();
         }
 
-        open = ImGui::TreeNode(ICON_FK_PICTURE_O " Textures");
+        open = ImGui::TreeNode(ICON_LC_IMAGE " Textures");
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        ImGui::Text(ICON_LC_CIRCLE_PLUS);
         if(ImGui::IsItemClicked(0)){
             int id = mModelFurniture->mTextureHeaders.size();
             for(int idx = 0; idx < mModelFurniture->mTextureHeaders.size(); idx++){
@@ -521,11 +606,19 @@ void UEditorTab::RenderSceneTreePanel(){
         if(open){
             uint16_t deleteIdx = UINT16_MAX;
             for(auto [idx, texture] : mModelFurniture->mTextureHeaders){
-                ImGui::Image(static_cast<uintptr_t>(texture.TextureID), {16, 16});
-                ImGui::SameLine();
                 if(&mModelFurniture->mTextureHeaders[idx] == SelectedResource){
-                    ImGui::TextColored({0x00, 0xFF, 0x00, 0xFF}, "Texture %d", idx);
+                    std::string name = std::format("Texture {}", idx);
+                    ImVec2 pos = ImGui::GetCursorScreenPos();
+                    ImDrawList* list = ImGui::GetWindowDrawList();
+                    ImVec2 p1 = pos-ImGui::GetStyle().FramePadding, p2 = pos+ImGui::CalcTextSize(name.c_str())+ImVec2(19.f,3.f)+ImVec2(ImGui::GetStyle().FramePadding.x*2,0.0f);
+                    list->AddRectFilled(p1, p2, ImColor(ImGui::GetStyle().Colors[ImGuiCol_Border]), 3.f);
+                    list->AddRect(p1, p2, ImColor(0x32, 0x32, 0x32, 0xFF), 3.f, 0, 1.5f);
+                    ImGui::Image(static_cast<uintptr_t>(texture.TextureID), {16, 16});
+                    ImGui::SameLine();
+                    ImGui::Text("Texture %d", idx);
                 } else {
+                    ImGui::Image(static_cast<uintptr_t>(texture.TextureID), {16, 16});
+                    ImGui::SameLine();
                     ImGui::Text("Texture %d", idx);
                 }
                 if(ImGui::IsItemClicked(0)){
@@ -565,20 +658,15 @@ void UEditorTab::RenderSceneTreePanel(){
         }
     else if(mCurrentModelType == EModelType::Actor) {
         ImGui::Text("SceneGraph");
-        ImGui::SameLine();
-        float widthNeeded = ImGui::CalcTextSize("Save").x + ImGui::GetStyle().FramePadding.x * 2.f;
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - widthNeeded);
-        if(ImGui::Button("Save")){
-        }
         ImGui::Separator();
         MdlTreeNodeUI(mModelActor, 0);
         ImGui::Text("Resources");
         bool open = false;
-        open = ImGui::TreeNode(ICON_FK_PICTURE_O " Textures");
+        open = ImGui::TreeNode(ICON_LC_IMAGE " Textures");
         ImGui::SameLine();
         ImGui::Spacing();
         ImGui::SameLine();
-        ImGui::Text(ICON_FK_PLUS_CIRCLE);
+        ImGui::Text(ICON_LC_CIRCLE_PLUS);
         if(ImGui::IsItemClicked(0)){
             int id = mModelActor->mTextureHeaders.size();
             for(int idx = 0; idx < mModelActor->mTextureHeaders.size(); idx++){
@@ -596,7 +684,10 @@ void UEditorTab::RenderSceneTreePanel(){
                 ImGui::Image(static_cast<uintptr_t>(texture.TextureID), {16, 16});
                 ImGui::SameLine();
                 if(&mModelActor->mTextureHeaders[idx] == SelectedResource){
-                    ImGui::TextColored({0x00, 0xFF, 0x00, 0xFF}, "Texture %d", idx);
+                    ImGui::BeginGroup();
+                    //ImGui::TextColored({0x00, 0xFF, 0x00, 0xFF}, "Texture %d", idx);
+                    ImGui::Text("Texture %d", idx);
+                    ImGui::EndGroup();
                 } else {
                     ImGui::Text("Texture %d", idx);
                 }
@@ -633,6 +724,12 @@ void UEditorTab::RenderSceneTreePanel(){
             }
             ImGui::TreePop();
         }
+    }
+
+    if(mModelArchive != nullptr){
+        ImGui::Text("Archive");
+        ImGui::Separator();
+        RenderArcFolderTreeNode(mModelArchive->GetRoot());
     }
 }
 
@@ -681,10 +778,8 @@ void UEditorTab::RenderDetailsPanel(){
                 ImGui::Separator();
                 auto batch = reinterpret_cast<BIN::Batch*>(SelectedResource);
                 ImGui::Text("NBT Enabled");
-                bool clicked = ImGui::IsItemClicked(); ImGui::SameLine();
-                ImGui::Text(batch->NBTFlag == 1 ? ICON_FK_CHECK_CIRCLE : ICON_FK_CIRCLE_O);
-                clicked |= ImGui::IsItemClicked();
-                if(clicked){
+                bool nbtEnabled = batch->NBTFlag == 1;
+                if(ImGui::Checkbox("NBT Enabled", &nbtEnabled)){
                     if(batch->NBTFlag == 0){
                         batch->NBTFlag = 1;
                         batch->TexCoordFlag = 2;
@@ -705,10 +800,10 @@ void UEditorTab::RenderDetailsPanel(){
                 ImGui::Text("Texture");
                 ImGui::Separator();
                 auto texture = reinterpret_cast<BIN::TextureHeader*>(SelectedResource);
-                if(ImGui::BeginCombo("Texture Format", TextureFormatNames[texture->Format])){
-                    for(int i = 0; i < TextureFormatNames.size(); i++){
-                        if(std::string(TextureFormatNames[i]) == "???") continue;
-                        if(ImGui::Selectable(TextureFormatNames[i])){
+                if(ImGui::BeginCombo("Texture Format", TextureFormatNamesBin[texture->Format])){
+                    for(int i = 0; i < TextureFormatNamesBin.size(); i++){
+                        if(std::string(TextureFormatNamesBin[i]) == "???") continue;
+                        if(ImGui::Selectable(TextureFormatNamesBin[i])){
                             texture->Format = i;
                         }
                     }
@@ -786,7 +881,11 @@ void UEditorTab::RenderDetailsPanel(){
                 break;
             }
         }
-        if (ImGuiFileDialog::Instance()->Display("replaceTextureImageDialog")) {
+
+        ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
+        ImGui::SetNextWindowSize(viewportSize * 0.75f);
+        ImGui::SetNextWindowPos((viewportSize * 0.5f) - ((viewportSize * 0.75f) * 0.5f));
+        if (ImGuiFileDialog::Instance()->Display("replaceTextureImageDialog", ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
     		if (ImGuiFileDialog::Instance()->IsOk()) {
     			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
                 if(SelectedResource != nullptr){
@@ -803,7 +902,10 @@ void UEditorTab::RenderDetailsPanel(){
 
     		ImGuiFileDialog::Instance()->Close();
     	}
-        if (ImGuiFileDialog::Instance()->Display("exportTextureImageDialog")) {
+
+       	ImGui::SetNextWindowSize(viewportSize * 0.75f);
+    	ImGui::SetNextWindowPos((viewportSize * 0.5f) - ((viewportSize * 0.75f) * 0.5f));
+        if (ImGuiFileDialog::Instance()->Display("exportTextureImageDialog", ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
     		if (ImGuiFileDialog::Instance()->IsOk()) {
     			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
                 if(SelectedResource != nullptr){
@@ -815,10 +917,86 @@ void UEditorTab::RenderDetailsPanel(){
 
     		ImGuiFileDialog::Instance()->Close();
     	}
+
+        ImGui::SetNextWindowSize(viewportSize * 0.75f);
+        ImGui::SetNextWindowPos((viewportSize * 0.5f) - ((viewportSize * 0.75f) * 0.5f));
+        if (ImGuiFileDialog::Instance()->Display("replaceBatchDialog", ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
+    		if (ImGuiFileDialog::Instance()->IsOk()) {
+    			std::string filePath = ImGuiFileDialog::Instance()->GetFilePathName();
+                if(SelectedResource != nullptr && SelectedType == SelectedResourceType::Batch){
+                    auto batch = reinterpret_cast<BIN::Batch*>(SelectedResource);
+                    batch->Primitives.clear();
+
+                    tinyobj::attrib_t attributes;
+                    std::vector<tinyobj::shape_t> shapes;
+                    std::vector<tinyobj::material_t> materials;
+
+                    std::string warn;
+                    std::string err;
+                    bool ret = tinyobj::LoadObj(&attributes, &shapes, &materials, &warn, &err, std::filesystem::path(filePath).string().c_str(), std::filesystem::path(filePath).parent_path().string().c_str(), true);
+                    if(!ret){
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, std::format("Failed to load OBJ\nErr: {}\nPath: {}", err, filePath).data()});
+                    } else {
+
+                        std::vector<Vertex> vertices;
+                        std::vector<std::size_t> indices;
+                        uint32_t stripCount = 0;
+                        uint32_t triangleCount = 0;
+                        for(auto shp : shapes){
+                            if(shp.mesh.indices.size() == 0) continue;
+                            for(int i = 0; i < shp.mesh.indices.size(); i++){
+                                Vertex vtx;
+                                int v = shp.mesh.indices[i].vertex_index;
+                                int n = shp.mesh.indices[i].normal_index;
+                                int t = shp.mesh.indices[i].texcoord_index;
+                                vtx.Position = glm::vec3(attributes.vertices[v * 3], attributes.vertices[(v * 3) + 1], attributes.vertices[(v * 3) + 2]);
+                                vtx.Normal = glm::vec3(attributes.normals[n * 3], attributes.normals[(n * 3) + 1], attributes.normals[(n * 3) + 2]);
+                                vtx.Texcoord = glm::vec2(attributes.texcoords[t * 2], attributes.texcoords[(t * 2) + 1]);
+
+                                auto vtxIdx = std::find_if(vertices.begin(), vertices.end(), [i=vtx](const Vertex& o){
+                                    return i.Position == o.Position && i.Normal == o.Normal && i.Texcoord == o.Texcoord;
+                                });
+
+                                if(vtxIdx != vertices.end()){
+                                    indices.push_back(vtxIdx - vertices.begin());
+                                } else {
+                                    indices.push_back(vertices.size());
+                                    vertices.push_back(vtx);
+                                }
+                            }
+
+                            triangle_stripper::tri_stripper stripify(indices);
+                            triangle_stripper::primitive_vector primitives;
+                            stripify.SetBackwardSearch(false);
+                            stripify.Strip(&primitives);
+
+                            int indexCount = 0;
+                            for(auto p : primitives){
+                                Primitive primitive;
+                                primitive.Opcode = (p.Type == triangle_stripper::TRIANGLE_STRIP ? GXPrimitiveType::TriangleStrip : GXPrimitiveType::Triangles);
+                                for(int i = 0; i < p.Indices.size(); i++){
+                                    primitive.Vertices.push_back(vertices[p.Indices[i]]);
+                                }
+                                indexCount += p.Indices.size();
+                                batch->Primitives.push_back(primitive);
+                            }
+
+                            stripCount += indexCount;
+                            triangleCount += shp.mesh.indices.size();
+                        }
+                        ImGui::InsertNotification({ImGuiToastType::Info, 1000, std::format("TriStripped Faces {} / {}", stripCount, triangleCount).data()});
+
+                        batch->ReloadMeshes();
+                    }
+                }
+      		}
+
+    		ImGuiFileDialog::Instance()->Close();
+    	}
     } else if(mCurrentModelType == EModelType::Actor && SelectedType != SelectedResourceType::None && SelectedResource != nullptr){
         switch(SelectedType){
             case SelectedResourceType::GraphNode: {
-                ImGui::Text("Graph Node");
+                ImGui::Text("Bone");
                 ImGui::Separator();
                 break;
             }
@@ -826,10 +1004,10 @@ void UEditorTab::RenderDetailsPanel(){
                 ImGui::Text("Texture");
                 ImGui::Separator();
                 auto texture = reinterpret_cast<MDL::TextureHeader*>(SelectedResource);
-                if(ImGui::BeginCombo("Texture Format", TextureFormatNames[texture->Format])){
-                    for(int i = 0; i < TextureFormatNames.size(); i++){
-                        if(std::string(TextureFormatNames[i]) == "???") continue;
-                        if(ImGui::Selectable(TextureFormatNames[i])){
+                if(ImGui::BeginCombo("Texture Format", TextureFormatNamesMdl[texture->Format])){
+                    for(int i = 0; i < TextureFormatNamesMdl.size(); i++){
+                        if(std::string(TextureFormatNamesMdl[i]) == "???") continue;
+                        if(ImGui::Selectable(TextureFormatNamesMdl[i])){
                             texture->Format = i;
                         }
                     }
@@ -909,10 +1087,12 @@ void UContext::Render(float deltaTime) {
 		ImGui::DockBuilderSetNodeSize(mMainDockSpaceID, mainViewport->Size);
 
 		mDockNodeHierarchyID = ImGui::DockBuilderSplitNode(mMainDockSpaceID, ImGuiDir_Left, 0.18f, nullptr, &mMainDockSpaceID);
-		mDockNodeViewportID = ImGui::DockBuilderSplitNode(mMainDockSpaceID, ImGuiDir_Left, 0.83f, nullptr, &mDockNodeDetailsID);
+		mDockNodeViewportID = ImGui::DockBuilderSplitNode(mMainDockSpaceID, ImGuiDir_Left, 0.75f, nullptr, &mDockNodeDetailsID);
+		mDockNodeViewportID = ImGui::DockBuilderSplitNode(mDockNodeViewportID, ImGuiDir_Up, 0.8f, nullptr, &mDockNodeTimelineID);
 
 		ImGui::DockBuilderDockWindow("sceneHierarchy", mDockNodeHierarchyID);
 		ImGui::DockBuilderDockWindow("viewportWindow", mDockNodeViewportID);
+		ImGui::DockBuilderDockWindow("timelineWindow", mDockNodeTimelineID);
 		ImGui::DockBuilderDockWindow("detailWindow", mDockNodeDetailsID);
 
 		ImGui::DockBuilderFinish(mMainDockSpaceID);
@@ -926,12 +1106,21 @@ void UContext::Render(float deltaTime) {
 
 	ImGui::Begin("viewportWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 	    if(ImGui::BeginTabBar("Models")){
-    		for(auto tab : mTabs){
-    		    if(ImGui::BeginTabItem(tab->mName.c_str())){
-                    mSelectedTab = tab;
+			int closeIdx = -1;
+    		for(int i = 0; i < mTabs.size(); i++){
+                bool isOpen = true;
+    		    if(ImGui::BeginTabItem(mTabs[i]->mName.c_str(), &isOpen)){
+                    mSelectedTab = mTabs[i];
+                    if(!isOpen) closeIdx = i;
                     ImGui::EndTabItem();
                 }
     		}
+            if(closeIdx != -1){
+                if(mSelectedTab == mTabs[closeIdx]){
+                    mSelectedTab = nullptr;
+                }
+                mTabs.erase(mTabs.begin() + closeIdx);
+            }
     	    ImGui::EndTabBar();
 		}
 
@@ -971,6 +1160,11 @@ void UContext::Render(float deltaTime) {
 			glDrawBuffers(2, attachments);
 
 			//assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
+			for(auto tab : mTabs){
+			    tab->GetCamera().UpdateSize(winSize);
+			}
+
 		}
 
 	    glEnable(GL_DEPTH_TEST);
@@ -995,6 +1189,8 @@ void UContext::Render(float deltaTime) {
 		    mSelectedTab->RenderModel(deltaTime);
 		}
 
+		ImVec2 frameSize = {ImGui::GetStyle().WindowBorderSize, ImGui::GetStyle().WindowBorderSize};
+		ImGui::GetWindowDrawList()->AddRectFilled(cursorPos - frameSize, cursorPos + winSize + frameSize, ImColor(ImGui::GetStyle().Colors[ImGuiCol_Border]));
 		ImGui::GetWindowDrawList()->AddRectFilledMultiColor(cursorPos, cursorPos + winSize, 0xFF303030, 0xFF303030, 0xFF202020, 0xFF202020);
 		ImGui::Image(static_cast<uintptr_t>(mViewTex), winSize, {0.0f, 1.0f}, {1.0f, 0.0f});
 		if(ImGui::IsItemClicked(0) && !ImGuizmo::IsOver()){
@@ -1008,8 +1204,14 @@ void UContext::Render(float deltaTime) {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
 		if(mSelectedTab != nullptr) mSelectedTab->RenderGizmos(cursorPos, winSize);
-
 	ImGui::End();
+
+	if(mSelectedTab != nullptr && mSelectedTab->ShouldShowTimeline()){
+    	ImGui::SetNextWindowClass(&mainWindowOverride);
+    	ImGui::Begin("timelineWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+    	mSelectedTab->RenderTimelineAndRes();
+    	ImGui::End();
+	}
 
 	ImGui::SetNextWindowClass(&mainWindowOverride);
 	ImGui::Begin("sceneHierarchy", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
@@ -1046,24 +1248,28 @@ void UContext::RenderMenuBar() {
 			if (ImGui::MenuItem("Bin")) {
     			mTabs.push_back(std::make_shared<UEditorTab>(EModelType::Furniture));
     			mSelectedTab = mTabs.back();
-    			mSelectedTab->mName = "New Bin";
+                mSelectedTab->mName = "New Bin";
 			}
 			if (ImGui::MenuItem("Mdl")) {
     			mTabs.push_back(std::make_shared<UEditorTab>(EModelType::Actor));
     			mSelectedTab = mTabs.back();
     			mSelectedTab->mName = "New Mdl";
 			}
-			if(ImGui::MenuItem("Bin From FBX")){
+			if(ImGui::BeginMenu("Fbx...")){
                 mBinFBXImportOpen = true;
 			}
             ImGui::EndMenu();
 		}
-		if (ImGui::MenuItem("Open")) {
+		if (ImGui::MenuItem("Open...")) {
 			mModelSelectOpen = true;
 		}
 
-		if (ImGui::MenuItem("Save")) {
-			mModelSelectSave = true;
+		if (ImGui::MenuItem("Save...")) {
+		    if(mSelectedTab != nullptr) mSelectedTab->SaveModel();
+		}
+
+		if (ImGui::MenuItem("Save As...")) {
+			mModelSelectSaveAs = true;
 		}
 
 		ImGui::EndMenu();
@@ -1072,19 +1278,29 @@ void UContext::RenderMenuBar() {
 	ImGui::EndMainMenuBar();
 
 	if (mModelSelectOpen) {
-		IGFD::FileDialogConfig config;
-		ImGuiFileDialog::Instance()->OpenDialog("OpenModelDialog", "Open Model", "Room Model (*.bin){.bin},Actor Model (*.mdl){.mdl}, Furniture Animation (*.anm){.anm}", config);
+		IGFD::FileDialogConfig config { .flags = ImGuiFileDialogFlags_Modal };
+		ImGuiFileDialog::Instance()->OpenDialog("OpenModelDialog", "Open Model", "Archive (*.arc, *.szp){.arc,.szp},Room Model (*.bin){.bin},Actor Model (*.mdl){.mdl}", config);
 	}
 
-	if (mModelSelectSave) {
-		IGFD::FileDialogConfig config;
-		ImGuiFileDialog::Instance()->OpenDialog("SaveModelDialog", "Save Model", "Room Model (*.bin){.bin},Actor Model (*.mdl){.mdl}", config);
+	if (mModelSelectSaveAs && mSelectedTab != nullptr) {
+	    IGFD::FileDialogConfig config { .flags = ImGuiFileDialogFlags_Modal };
+		if(mSelectedTab->HasArchive()){
+		    ImGuiFileDialog::Instance()->OpenDialog("SaveAsModelDialog", "Save Archive", "Archive (*.arc){.arc},Compressed Archive (*.szp){.szp}", config);
+		} else if(mSelectedTab->IsModelType(EModelType::Furniture)){
+		    ImGuiFileDialog::Instance()->OpenDialog("SaveAsModelDialog", "Save Model", "Room Model (*.bin){.bin}", config);
+		} else if(mSelectedTab->IsModelType(EModelType::Actor)) {
+		    ImGuiFileDialog::Instance()->OpenDialog("SaveAsModelDialog", "Save Model", "Actor Model (*.mdl){.mdl}", config);
+		}
 	}
 
-	if (ImGuiFileDialog::Instance()->Display("OpenModelDialog")) {
+	ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
+	ImGui::SetNextWindowSize(viewportSize * 0.75f);
+	ImGui::SetNextWindowPos((viewportSize * 0.5f) - ((viewportSize * 0.75f) * 0.5f));
+	if (ImGuiFileDialog::Instance()->Display("OpenModelDialog", ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
 		if (ImGuiFileDialog::Instance()->IsOk()) {
 			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
 			mTabs.push_back(std::make_shared<UEditorTab>(std::filesystem::path(FilePath)));
+			mTabs.back()->GetCamera().UpdateSize({mPrevWinWidth, mPrevWinHeight});
 			mSelectedTab = mTabs.back();
 
 			mModelSelectOpen = false;
@@ -1095,15 +1311,17 @@ void UContext::RenderMenuBar() {
 		ImGuiFileDialog::Instance()->Close();
 	}
 
-	if (ImGuiFileDialog::Instance()->Display("SaveModelDialog")) {
+	ImGui::SetNextWindowSize(viewportSize * 0.75f);
+	ImGui::SetNextWindowPos((viewportSize * 0.5f) - ((viewportSize * 0.75f) * 0.5f));
+	if (ImGuiFileDialog::Instance()->Display("SaveAsModelDialog", ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
 		if (ImGuiFileDialog::Instance()->IsOk()) {
 			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
 
 			if(mSelectedTab != nullptr) mSelectedTab->SaveModel(FilePath);
 
-			mModelSelectSave = false;
+			mModelSelectSaveAs = false;
 		} else {
-			mModelSelectSave = false;
+			mModelSelectSaveAs = false;
 		}
 
 		ImGuiFileDialog::Instance()->Close();

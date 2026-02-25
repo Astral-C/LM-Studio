@@ -4,6 +4,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <imgui.h>
 #include "ImGuizmo.h"
+#include "glm/fwd.hpp"
 
 struct GLFWwindow;
 
@@ -27,6 +28,10 @@ public:
 	~UCamera() {}
 
 	float mDistance;
-    glm::mat4 mProjection { glm::mat4(1.0f) }, mView { glm::mat4(1.0f) };
+	glm::vec3 mCenter { 0.0f };
+	glm::mat4 mProjection { glm::mat4(1.0f) }, mView { glm::mat4(1.0f) };
+
+    void SetOrbitPoint(glm::vec3 orbitPoint, glm::vec3 dist=glm::vec3(800,800,800));
 	void Update(float deltaTime);
+	void UpdateSize(ImVec2 size);
 };

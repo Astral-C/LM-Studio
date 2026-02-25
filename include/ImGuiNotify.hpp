@@ -12,6 +12,7 @@
 #ifndef IMGUI_NOTIFY
 #define IMGUI_NOTIFY
 
+#include "IconsLucide.h"
 #pragma once
 
 #include <vector>			// Vector for storing notifications list
@@ -281,13 +282,13 @@ public:
         case ImGuiToastType::None:
             return nullptr;
         case ImGuiToastType::Success:
-            return ICON_FK_CHECK_CIRCLE; // Fork Awesome
+            return ICON_LC_CIRCLE_CHECK; // Fork Awesome
         case ImGuiToastType::Warning:
-            return ICON_FK_EXCLAMATION_TRIANGLE; // Foek Awesome
+            return ICON_LC_TRIANGLE_ALERT; // Foek Awesome
         case ImGuiToastType::Error:
-            return ICON_FK_EXCLAMATION_CIRCLE; // Fork Awesome
+            return ICON_LC_CIRCLE_ALERT; // Fork Awesome
         case ImGuiToastType::Info:
-            return ICON_FK_QUESTION_CIRCLE; // Fork Awesome
+            return ICON_LC_CIRCLE_QUESTION_MARK; // Fork Awesome
         default:
             return nullptr;
         }
@@ -612,7 +613,7 @@ namespace ImGui
                     SetCursorPosX(GetCursorPosX() + (GetWindowSize().x - GetCursorPosX()) * scale);
 
                     // If the button is pressed, we want to remove the notification
-                    Text(ICON_FK_TIMES);
+                    Text(ICON_LC_X);
                     if (IsItemClicked())
                     {
                         RemoveNotification(i);

@@ -13,6 +13,7 @@
 #include <iostream>
 
 #include "IconsForkAwesome.h"
+#include "IconsLucide.h"
 
 static UContext* ResizeContext = nullptr;
 
@@ -78,16 +79,69 @@ bool UViewerApplication::Setup() {
 		io.Fonts->AddFontFromFileTTF((RES_BASE_PATH / "font" / "NotoSansJP-Regular.otf").string().c_str(), 16.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
 	}
 
-	if(std::filesystem::exists((RES_BASE_PATH / "font" / "forkawesome.ttf"))){
-		static const ImWchar icons_ranges[] = { ICON_MIN_FK, ICON_MAX_16_FK, 0 };
+	if(std::filesystem::exists((RES_BASE_PATH / "font" / "lucide.ttf"))){
+		static const ImWchar icons_ranges[] = { ICON_MIN_LC, ICON_MAX_16_LC, 0 };
 		ImFontConfig icons_config;
 		icons_config.MergeMode = true;
 		icons_config.PixelSnapH = true;
+		icons_config.GlyphOffset.y = 2.25f;
 		icons_config.GlyphMinAdvanceX = 14.0f;
-		io.Fonts->AddFontFromFileTTF((RES_BASE_PATH / "font" / "forkawesome.ttf").string().c_str(), icons_config.GlyphMinAdvanceX, &icons_config, icons_ranges );
+		io.Fonts->AddFontFromFileTTF((RES_BASE_PATH / "font" / "lucide.ttf").string().c_str(), icons_config.GlyphMinAdvanceX, &icons_config, icons_ranges );
 	}
 
-	//glEnable(GL_MULTISAMPLE);
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.Colors[ImGuiCol_TitleBg] = ImColor(0x22, 0x22, 0x22, 0xFF);
+	style.Colors[ImGuiCol_TitleBgActive] = ImColor(0x22, 0x22, 0x22, 0xFF);
+	style.Colors[ImGuiCol_WindowBg] = ImColor(0x22, 0x22, 0x22, 0xFF);
+
+	style.Colors[ImGuiCol_MenuBarBg] = ImColor(0x28, 0x28, 0x28, 0xFF);
+
+	style.Colors[ImGuiCol_Button] = ImColor(0x3F, 0x6D, 0x65, 0xFF);
+	style.Colors[ImGuiCol_ButtonActive] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+	style.Colors[ImGuiCol_ButtonHovered] = ImColor(0x5A, 0xA3, 0x94, 0xFF);
+
+	style.Colors[ImGuiCol_Tab] = ImColor(0x3F, 0x6D, 0x65, 0xFF);
+	style.Colors[ImGuiCol_TabActive] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+	style.Colors[ImGuiCol_TabHovered] = ImColor(0x5A, 0xA3, 0x94, 0xFF);
+
+	style.Colors[ImGuiCol_TabUnfocused] = ImColor(0x3F, 0x6D, 0x65, 0xFF);
+	style.Colors[ImGuiCol_TabUnfocusedActive] = ImColor(0x3F, 0x6D, 0x65, 0xFF);
+
+	style.Colors[ImGuiCol_TabDimmed] = ImColor(0x3F, 0x6D, 0x65, 0xFF);
+	style.Colors[ImGuiCol_TabDimmedSelected] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+
+
+	style.Colors[ImGuiCol_ResizeGripActive] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+	style.Colors[ImGuiCol_ResizeGripHovered] = ImColor(0x5A, 0xA3, 0x94, 0xFF);
+	style.Colors[ImGuiCol_ResizeGrip] = ImColor(0x3F, 0x6D, 0x65, 0xFF);
+
+	style.Colors[ImGuiCol_SliderGrab] = ImColor(0x3F, 0x6D, 0x65, 0xFF);
+	style.Colors[ImGuiCol_SliderGrabActive] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+
+	style.Colors[ImGuiCol_ChildBg] = ImColor(0x28, 0x28, 0x28, 0xFF);
+	style.Colors[ImGuiCol_PopupBg] = ImColor(0x28, 0x28, 0x28, 0xFF);
+
+	style.FrameBorderSize = 1.5f;
+	style.Colors[ImGuiCol_FrameBg] = ImColor(0x28, 0x28, 0x28, 0xFF);
+	style.Colors[ImGuiCol_FrameBgActive] = ImColor(0x28, 0x28, 0x28, 0xFF);
+	style.Colors[ImGuiCol_FrameBgHovered] = ImColor(0x32, 0x32, 0x32, 0xFF);;
+	style.Colors[ImGuiCol_CheckMark] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+
+
+	style.Colors[ImGuiCol_HeaderHovered] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+	style.Colors[ImGuiCol_HeaderActive] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+	style.Colors[ImGuiCol_Header] = ImColor(0x4A, 0x93, 0x84, 0xFF);
+	style.Colors[ImGuiCol_ModalWindowDimBg] = ImColor(0x18, 0x18, 0x18, 0xA0);
+
+	style.FrameRounding = 2.f;
+	style.FramePadding = ImVec2(5.0f,3.0f);
+
+	// #ECECEC
+	// #84934A
+	// #656D3F
+	// #492828
+
+	glEnable(GL_MULTISAMPLE);
 
 	// Create viewer context
 	mContext = new UContext();

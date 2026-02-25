@@ -8,6 +8,7 @@
 #include <glm/geometric.hpp>
 #include <iostream>
 #include <algorithm>
+#include <format>
 #include <GLFW/glfw3.h>
 
 UCamera::UCamera() : mNearPlane(1.0f), mFarPlane(1000000.f), mFovy(glm::radians(60.f)), mAspectRatio(16.f / 9.f), mDistance(0.0f)
@@ -17,17 +18,37 @@ UCamera::UCamera() : mNearPlane(1.0f), mFarPlane(1000000.f), mFovy(glm::radians(
     mDistance = glm::distance(glm::vec3(0.0f,0.0f,0.0f), glm::vec3(800.0f, 800.0f, 800.0f));
 }
 
+void UCamera::SetOrbitPoint(glm::vec3 orbitPoint, glm::vec3 dist){
+    mCenter = orbitPoint;
+    mView = glm::lookAt(orbitPoint + dist, orbitPoint, glm::vec3(0.0f,1.0f,0.0f));
+    mDistance = glm::distance(orbitPoint, orbitPoint + dist);
+}
+
+void UCamera::UpdateSize(ImVec2 size){
+    mProjection = glm::perspective(mFovy, size.x/size.y, mNearPlane, mFarPlane);
+}
+
 void UCamera::Update(float deltaTime){
     if(ImGui::GetIO().MouseWheel != 0.0f){
         float amt = ImGui::GetIO().MouseWheel * 15.0f;
-        glm::vec3 forward = ZERO - glm::vec3(glm::inverse(mView)[3]);
+        glm::vec3 forward = glm::vec3(glm::inverse(mView)[3]) - mCenter;
         mView = glm::translate(mView, glm::normalize(forward) * amt);
-        mDistance = glm::distance(glm::vec3(0,0,0), glm::vec3(glm::inverse(mView)[3]));
+        mDistance = glm::distance(mCenter, glm::vec3(glm::inverse(mView)[3]));
     }
-    if(UInput::GetMouseButtonDown(GLFW_MOUSE_BUTTON_RIGHT) && UInput::GetMouseDelta() != glm::vec2(0.0f, 0.0f)){
-        glm::vec2 delta = UInput::GetMouseDelta() * 20.f;
-        glm::vec3 curUp = glm::normalize(glm::cross(glm::vec3(mView[1]), glm::vec3(mView[2])));
-        mView = glm::translate(mView, glm::normalize(glm::vec3(mView[1])) * delta.x);
-        mView = glm::translate(mView, curUp * delta.y);
+
+    glm::vec2 mouseDelta = UInput::GetMouseDelta();
+    if(ImGui::IsMouseDragging(ImGuiMouseButton_Middle) && mouseDelta != glm::vec2(0.0f, 0.0f)){
+        glm::vec2 delta = {mouseDelta.x, mouseDelta.y};
+        glm::vec3 forward = glm::vec3(glm::inverse(mView)[3]) - mCenter;
+        glm::vec3 right = glm::normalize(glm::cross(forward, UNIT_Y));
+        glm::vec3 up = glm::normalize(glm::cross(forward, right));
+        mView = glm::translate(mView, right * -delta.x);
+        mView = glm::translate(mView, up * delta.y);
+    }
+
+    if(ImGui::IsMouseDragging(ImGuiMouseButton_Right) && mouseDelta != glm::vec2(0.0f, 0.0f)){
+        glm::vec2 delta = {mouseDelta.x, mouseDelta.y};
+        mView = glm::rotate(mView, glm::radians(-delta.x), glm::vec3(0,1,0));
+        mView = glm::rotate(mView, glm::radians(delta.y), glm::vec3(1,0,0));
     }
 }
