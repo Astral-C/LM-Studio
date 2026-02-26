@@ -976,17 +976,17 @@ namespace MDL {
         glm::quat rot;
         glm::vec3 rotEuler = glm::eulerAngles(rot);
 
-        if(joint.ScaleX.mKeys.size() > 0) scale.x = MixTrack(joint.ScaleX, mTime, joint.mPreviousScaleKeyX, joint.mNextScaleKeyX);
-        if(joint.ScaleY.mKeys.size() > 0) scale.y = MixTrack(joint.ScaleY, mTime, joint.mPreviousScaleKeyY, joint.mNextScaleKeyY);
-        if(joint.ScaleZ.mKeys.size() > 0) scale.z = MixTrack(joint.ScaleZ, mTime, joint.mPreviousScaleKeyZ, joint.mNextScaleKeyZ);
+        if(joint.ScaleX.mKeyFrames.size() > 0) scale.x = MixTrack(joint.ScaleX, mTime, joint.mPreviousScaleKeyX, joint.mNextScaleKeyX);
+        if(joint.ScaleY.mKeyFrames.size() > 0) scale.y = MixTrack(joint.ScaleY, mTime, joint.mPreviousScaleKeyY, joint.mNextScaleKeyY);
+        if(joint.ScaleZ.mKeyFrames.size() > 0) scale.z = MixTrack(joint.ScaleZ, mTime, joint.mPreviousScaleKeyZ, joint.mNextScaleKeyZ);
 
-        if(joint.RotationX.mKeys.size() > 0) rotEuler.x = glm::radians(MixTrack(joint.RotationX, mTime, joint.mPreviousRotKeyX, joint.mNextRotKeyX));
-        if(joint.RotationY.mKeys.size() > 0) rotEuler.y = glm::radians(MixTrack(joint.RotationY, mTime, joint.mPreviousRotKeyY, joint.mNextRotKeyY));
-        if(joint.RotationZ.mKeys.size() > 0) rotEuler.z = glm::radians(MixTrack(joint.RotationZ, mTime, joint.mPreviousRotKeyZ, joint.mNextRotKeyZ));
+        if(joint.RotationX.mKeyFrames.size() > 0) rotEuler.x = glm::radians(MixTrack(joint.RotationX, mTime, joint.mPreviousRotKeyX, joint.mNextRotKeyX));
+        if(joint.RotationY.mKeyFrames.size() > 0) rotEuler.y = glm::radians(MixTrack(joint.RotationY, mTime, joint.mPreviousRotKeyY, joint.mNextRotKeyY));
+        if(joint.RotationZ.mKeyFrames.size() > 0) rotEuler.z = glm::radians(MixTrack(joint.RotationZ, mTime, joint.mPreviousRotKeyZ, joint.mNextRotKeyZ));
 
-        if(joint.PositionX.mKeys.size() > 0) translation.x = MixTrack(joint.PositionX, mTime, joint.mPreviousPosKeyX, joint.mNextPosKeyX);
-        if(joint.PositionY.mKeys.size() > 0) translation.y = MixTrack(joint.PositionY, mTime, joint.mPreviousPosKeyY, joint.mNextPosKeyY);
-        if(joint.PositionZ.mKeys.size() > 0) translation.z = MixTrack(joint.PositionZ, mTime, joint.mPreviousPosKeyZ, joint.mNextPosKeyZ);
+        if(joint.PositionX.mKeyFrames.size() > 0) translation.x = MixTrack(joint.PositionX, mTime, joint.mPreviousPosKeyX, joint.mNextPosKeyX);
+        if(joint.PositionY.mKeyFrames.size() > 0) translation.y = MixTrack(joint.PositionY, mTime, joint.mPreviousPosKeyY, joint.mNextPosKeyY);
+        if(joint.PositionZ.mKeyFrames.size() > 0) translation.z = MixTrack(joint.PositionZ, mTime, joint.mPreviousPosKeyZ, joint.mNextPosKeyZ);
 
         keyframe = glm::scale(keyframe, scale);
         keyframe = glm::rotate(keyframe, rotEuler.x, glm::vec3(1,0,0));
@@ -995,21 +995,6 @@ namespace MDL {
         keyframe = glm::translate(keyframe, translation);
 
         return local * keyframe;
-    }
-
-    void WriteGroupYaml(std::fstream& strm, LTrackCommon& track, uint8_t flags, std::string name){
-        strm << std::format("    {}:", name) << std::endl;
-        for(int f = 0; f < track.mKeys.size(); f++){
-            LKeyframeCommon frame = track.mFrames[track.mKeys[f]];
-            std::string slopeInfo = "";
-            if(track.mKeys.size() > 1){
-                slopeInfo = std::format(", InSlope: {}", frame.inslope);
-            }
-            if(flags == 0x80){
-                slopeInfo = std::format(", {}, OutSlope: {}", slopeInfo, frame.inslope, frame.outslope);
-            }
-            strm << std::format("      - Frame: [{}, Value : {}{}]", frame.frame, frame.value, slopeInfo) << std::endl;
-        }
     }
 
     void Animation::Load(bStream::CStream* stream){
@@ -1028,12 +1013,6 @@ namespace MDL {
 
         uint32_t keyStartOffset = stream->readUInt32();
         uint32_t keyCountOffset = stream->readUInt32();
-
-        std::fstream animDump = std::fstream("animDump.yaml", std::ios::out);
-
-        animDump << std::format("FrameCount: {}", frameCount) << std::endl;
-        animDump << std::format("FrameDelay: {}", frameSpeed) << std::endl;
-        animDump << std::format("Flags: {}", flags) << std::endl;
 
         std::vector<std::array<uint32_t, 9>> beginIndices;
         std::vector<std::array<std::pair<uint8_t, uint8_t>, 9>> trackFlags;
@@ -1069,20 +1048,6 @@ namespace MDL {
             joint.PositionX.LoadTrackEx(stream, positionKeyframeOffset, beginIndices[j][6], trackFlags[j][6].second, true, trackFlags[j][6].first == 0x80);
             joint.PositionY.LoadTrackEx(stream, positionKeyframeOffset, beginIndices[j][7], trackFlags[j][7].second, true, trackFlags[j][7].first == 0x80);
             joint.PositionZ.LoadTrackEx(stream, positionKeyframeOffset, beginIndices[j][8], trackFlags[j][8].second, true, trackFlags[j][8].first == 0x80);
-
-            animDump << std::format("- Joint: {}", j) << std::endl;
-
-            WriteGroupYaml(animDump, joint.ScaleX, trackFlags[j][0].first, "Scale X");
-            WriteGroupYaml(animDump, joint.ScaleY, trackFlags[j][1].first, "Scale Y");
-            WriteGroupYaml(animDump, joint.ScaleZ, trackFlags[j][2].first, "Scale Z");
-
-            WriteGroupYaml(animDump, joint.RotationX, trackFlags[j][3].first, "Rotate X");
-            WriteGroupYaml(animDump, joint.RotationY, trackFlags[j][4].first, "Rotate Y");
-            WriteGroupYaml(animDump, joint.RotationZ, trackFlags[j][5].first, "Rotate Z");
-
-            WriteGroupYaml(animDump, joint.PositionX, trackFlags[j][6].first, "Position X");
-            WriteGroupYaml(animDump, joint.PositionY, trackFlags[j][7].first, "Position Y");
-            WriteGroupYaml(animDump, joint.PositionZ, trackFlags[j][8].first, "Position Z");
 
         }
     }

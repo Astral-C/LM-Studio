@@ -16,14 +16,12 @@
 #include "lucide.h"
 #include "noto_sans_jp_regular.h"
 
-static UContext* ResizeContext = nullptr;
+static UContext* CurrentApplContext = nullptr;
 
-void HandleFramebufferResize(GLFWwindow* window, int w, int h){
-	int width, height;
-	glfwGetFramebufferSize(window, &width, &height);
-	if(ResizeContext != nullptr){
-		//todo
-	}
+void HandleFramebufferResize(GLFWwindow* window, int w, int h){}
+
+void HandleDrop(GLFWwindow* window, int count, const char** paths){
+    CurrentApplContext->DropFiles(count, paths);
 }
 
 UViewerApplication::UViewerApplication() {
@@ -56,6 +54,7 @@ bool UViewerApplication::Setup() {
 	glfwSetMouseButtonCallback(mWindow, UInput::GLFWMouseButtonCallback);
 	glfwSetScrollCallback(mWindow, UInput::GLFWMouseScrollCallback);
 	glfwSetFramebufferSizeCallback(mWindow, HandleFramebufferResize);
+	glfwSetDropCallback(mWindow, HandleDrop);
 
 	glfwMakeContextCurrent(mWindow);
 	gladLoadGL(glfwGetProcAddress);
@@ -145,7 +144,7 @@ bool UViewerApplication::Setup() {
 
 	// Create viewer context
 	mContext = new UContext();
-	ResizeContext = mContext;
+	CurrentApplContext = mContext;
 
 	return true;
 }

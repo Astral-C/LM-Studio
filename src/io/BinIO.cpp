@@ -1396,17 +1396,17 @@ namespace BIN {
         if(node > mAnimationTracks.size()) return glm::mat4(1.0f);
 
         GraphNodeTrack& track = mAnimationTracks[node];
-        float sx = track.mXScaleTrack.mKeys.size() > 0 ? MixTrack(track.mXScaleTrack, mTime, track.mPreviousScaleKeyX, track.mNextScaleKeyX) : 1.0f;
-        float sy = track.mYScaleTrack.mKeys.size() > 0 ? MixTrack(track.mYScaleTrack, mTime, track.mPreviousScaleKeyY, track.mNextScaleKeyY) : 1.0f;
-        float sz = track.mZScaleTrack.mKeys.size() > 0 ? MixTrack(track.mZScaleTrack, mTime, track.mPreviousScaleKeyZ, track.mNextScaleKeyZ) : 1.0f;
+        float sx = track.mXScaleTrack.mKeyFrames.size() > 0 ? MixTrack(track.mXScaleTrack, mTime, track.mPreviousScaleKeyX, track.mNextScaleKeyX) : 1.0f;
+        float sy = track.mYScaleTrack.mKeyFrames.size() > 0 ? MixTrack(track.mYScaleTrack, mTime, track.mPreviousScaleKeyY, track.mNextScaleKeyY) : 1.0f;
+        float sz = track.mZScaleTrack.mKeyFrames.size() > 0 ? MixTrack(track.mZScaleTrack, mTime, track.mPreviousScaleKeyZ, track.mNextScaleKeyZ) : 1.0f;
 
-        float rz = track.mXRotTrack.mKeys.size() > 0 ? MixTrack(track.mXRotTrack, mTime, track.mPreviousRotKeyX, track.mNextRotKeyX) : 0.0f;
-        float ry = track.mYRotTrack.mKeys.size() > 0 ? MixTrack(track.mYRotTrack, mTime, track.mPreviousRotKeyY, track.mNextRotKeyY) : 0.0f;
-        float rx = track.mZRotTrack.mKeys.size() > 0 ? MixTrack(track.mZRotTrack, mTime, track.mPreviousRotKeyZ, track.mNextRotKeyZ) : 0.0f;
+        float rz = track.mXRotTrack.mKeyFrames.size() > 0 ? MixTrack(track.mXRotTrack, mTime, track.mPreviousRotKeyX, track.mNextRotKeyX) : 0.0f;
+        float ry = track.mYRotTrack.mKeyFrames.size() > 0 ? MixTrack(track.mYRotTrack, mTime, track.mPreviousRotKeyY, track.mNextRotKeyY) : 0.0f;
+        float rx = track.mZRotTrack.mKeyFrames.size() > 0 ? MixTrack(track.mZRotTrack, mTime, track.mPreviousRotKeyZ, track.mNextRotKeyZ) : 0.0f;
 
-        float px = track.mXPosTrack.mKeys.size() > 0 ? MixTrack(track.mXPosTrack, mTime, track.mPreviousPosKeyX, track.mNextPosKeyX) : 0.0f;
-        float py = track.mYPosTrack.mKeys.size() > 0 ? MixTrack(track.mYPosTrack, mTime, track.mPreviousPosKeyY, track.mNextPosKeyY) : 0.0f;
-        float pz = track.mZPosTrack.mKeys.size() > 0 ? MixTrack(track.mZPosTrack, mTime, track.mPreviousPosKeyZ, track.mNextPosKeyZ) : 0.0f;
+        float px = track.mXPosTrack.mKeyFrames.size() > 0 ? MixTrack(track.mXPosTrack, mTime, track.mPreviousPosKeyX, track.mNextPosKeyX) : 0.0f;
+        float py = track.mYPosTrack.mKeyFrames.size() > 0 ? MixTrack(track.mYPosTrack, mTime, track.mPreviousPosKeyY, track.mNextPosKeyY) : 0.0f;
+        float pz = track.mZPosTrack.mKeyFrames.size() > 0 ? MixTrack(track.mZPosTrack, mTime, track.mPreviousPosKeyZ, track.mNextPosKeyZ) : 0.0f;
 
         glm::mat4 frame(1.0f);
         frame = glm::scale(frame, glm::vec3(sx, sy, sz));

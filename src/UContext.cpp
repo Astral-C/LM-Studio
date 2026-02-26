@@ -5,32 +5,35 @@
 #include "IconsLucide.h"
 #include "io/BinIO.hpp"
 #include "io/MdlIO.hpp"
-#include "ufbx.h"
 #include "util/UUIUtil.hpp"
+#include "USequencer.hpp"
+#include "ufbx.h"
 
-#include "IconsForkAwesome.h"
-#include "ImGuiFileDialog.h"
-#include "ImGuizmo.h"
-#include "ImSequencer.h"
+
 #include <cstddef>
 #include <filesystem>
+#include <memory>
+#include <format>
 #include <glad/glad.h>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
+#include "tiny_obj_loader.h"
+#include "tri_stripper.h"
+#include "bstream.h"
+
+#include "IconsForkAwesome.h"
+#include "ImGuiFileDialog.h"
+#include "ImGuiNotify.hpp"
+#include "ImGuizmo.h"
 #include <imgui.h>
 #include <imgui_internal.h>
-#include <bstream.h>
-#include <memory>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb_image_resize2.h"
-#include <format>
-#include "ImGuiNotify.hpp"
-#include "tiny_obj_loader.h"
-#include "tri_stripper.h"
 
 glm::mat4 Identity(1.0f);
 
@@ -89,53 +92,63 @@ inline void ImportModelPane(const char *vFilter, IGFDUserDatas vUserDatas, bool 
     }
 }
 
-void UEditorTab::SaveModel(std::filesystem::path filepath){
-    if(filepath.empty()){
-        filepath = mModelPath;
-    }
-    bStream::CFileStream modelStream(filepath.string(), bStream::Endianess::Big, bStream::OpenMode::Out);
-    if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
-        mModelFurniture->Write(&modelStream);
-    }
-    if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
-        mModelActor->Save(&modelStream);
-    }
-}
-
-UEditorTab::UEditorTab(std::filesystem::path resPath){
-    mModelPath = resPath;
-    mName = resPath.filename().stem().string()+"##"+resPath.string();
-    bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
-    if(resPath.extension() == ".arc" || resPath.extension() == ".szp"){
-        mCurrentModelType = EModelType::None;
-        mModelArchive = Archive::Rarc::Create();
-        mModelArchive->Load(&modelStream);
-    } else if(resPath.extension() == ".bin"){
+UModelEditContext::UModelEditContext(bStream::CStream* stream, EModelType type){
+    if(type == EModelType::Furniture){
         mCurrentModelType = EModelType::Furniture;
         mModelFurniture = std::make_unique<BIN::Model>();
-        mModelFurniture->Load(&modelStream);
-
-    } else if(resPath.extension() == ".mdl"){
+        mModelFurniture->Load(stream);
+    } else {
         mCurrentModelType = EModelType::Actor;
-        bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
         mModelActor = std::make_unique<MDL::Model>();
-        mModelActor->Load(&modelStream);
+        mModelActor->Load(stream);
     }
 }
 
-UEditorTab::UEditorTab(EModelType type){
+UModelEditContext::UModelEditContext(bStream::CStream* stream){
+    stream->seek(0);
+    uint32_t magic = stream->readUInt32();
+    if(magic == 0x04B40000){
+        mCurrentModelType = EModelType::Actor;
+        mModelActor = std::make_unique<MDL::Model>();
+        mModelActor->Load(stream);
+    } else {
+        mCurrentModelType = EModelType::Furniture;
+        mModelFurniture = std::make_unique<BIN::Model>();
+        mModelFurniture->Load(stream);
+    }
+}
+
+UModelEditContext::UModelEditContext(EModelType type){
     if(type == EModelType::Furniture){
         mCurrentModelType = EModelType::Furniture;
         mModelFurniture = std::make_unique<BIN::Model>();
         mModelFurniture->mGraphNodes[0] = {};
-        mModelPath = std::filesystem::current_path() / "new_bin.bin";
-        mName = "New Bin";
     } else if(type == EModelType::Actor){
         mCurrentModelType = EModelType::Actor;
         mModelActor = std::make_unique<MDL::Model>();
-        mModelPath = std::filesystem::current_path() / "new_mdl.mdl";
-        mName = "New Mdl";
     }
+}
+
+UModelEditContext::~UModelEditContext(){
+
+}
+
+UEditorTab::UEditorTab(std::filesystem::path resPath){
+    mLoadedPath = resPath;
+    mName = resPath.filename().stem().string()+"##"+resPath.string();
+    bStream::CFileStream modelStream(resPath.string(), bStream::Endianess::Big, bStream::OpenMode::In);
+    if(resPath.extension() == ".arc" || resPath.extension() == ".szp"){
+        mModelArchive = Archive::Rarc::Create();
+        mModelArchive->Load(&modelStream);
+    } else if(resPath.extension() == ".bin"){
+        mModelContext = std::make_unique<UModelEditContext>(&modelStream, EModelType::Furniture);
+    } else if(resPath.extension() == ".mdl"){
+        mModelContext = std::make_unique<UModelEditContext>(&modelStream, EModelType::Actor);
+    }
+}
+
+UEditorTab::UEditorTab(EModelType type){
+    mModelContext = std::make_unique<UModelEditContext>(type);
 }
 
 UEditorTab::~UEditorTab(){
@@ -181,11 +194,55 @@ UContext::UContext(){
 }
 
 bool UContext::Update(float deltaTime) {
-
 	return true;
 }
 
-void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t index){
+void UModelEditContext::SaveModel(bStream::CStream* stream){
+    if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
+        mModelFurniture->Write(stream);
+    }
+    if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
+        mModelActor->Save(stream);
+    }
+}
+
+void UModelEditContext::LoadAnimation(bStream::CStream* stream){
+    if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
+        mFurnitureAnimation = std::make_unique<BIN::Animation>();
+        mFurnitureAnimation->Load(mModelFurniture.get(), stream);
+    }
+    if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
+        mActorSkeletalAnimation = std::make_unique<MDL::Animation>();
+        mActorSkeletalAnimation->Load(stream);
+    }
+}
+
+void UModelEditContext::SaveAnimation(bStream::CStream* stream){
+
+}
+
+void UEditorTab::SaveModel(std::filesystem::path filepath){
+    if(filepath.empty()){
+        filepath = mLoadedPath;
+    }
+
+    if(mModelArchive != nullptr){
+        bStream::CMemoryStream modelStream(10, bStream::Endianess::Big, bStream::OpenMode::Out);
+        mModelContext->SaveModel(&modelStream);
+        mCurrentModelFile->SetData(modelStream.getBuffer(), modelStream.getSize());
+    } else {
+        bStream::CFileStream modelStream(filepath.string(), bStream::Endianess::Big, bStream::OpenMode::Out);
+        mModelContext->SaveModel(&modelStream);
+    }
+}
+
+void UEditorTab::OpenQueuedModel(){
+    bStream::CMemoryStream modelStream(mQueuedOpenFile->GetData(), mQueuedOpenFile->GetSize(), bStream::Endianess::Big, bStream::OpenMode::In);
+    mModelContext = std::make_unique<UModelEditContext>(&modelStream);
+    mQueuedOpenFile = nullptr;
+}
+
+void UModelEditContext::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t index){
     //bool open = ImGui::TreeNodeEx(std::format("Node {}", model->mGraphNodes[index].Index).c_str(), (SelectedResource == &model->mGraphNodes[index] ? ImGuiTreeNodeFlags_Selected : 0));
     bool selected = (SelectedResource == &model->mGraphNodes[index] ? ImGuiTreeNodeFlags_Selected : 0);
     bool open = UIUtil::RenderNodeSelectableTreeNode(std::format("Node {}", model->mGraphNodes[index].Index), selected, selected);
@@ -209,6 +266,7 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
                 model->mGraphNodes[model->mGraphNodes[index].ParentIndex].ChildIndex = model->mGraphNodes[index].NextSibIndex;
             }
             model->mGraphNodes.erase(index);
+            if(!mModelUnsaved) mModelUnsaved = true;
         }
         ImGui::EndPopup();
     }
@@ -227,6 +285,7 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
         ImGui::Text(ICON_LC_CIRCLE_PLUS);
         if(ImGui::IsItemClicked(0)){
             model->mGraphNodes[index].mDrawElements.push_back({});
+            if(!mModelUnsaved) mModelUnsaved = true;
         }
         if(childrenOpen){
             uint16_t deleteIdx = UINT16_MAX;
@@ -248,6 +307,7 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
 
             if(deleteIdx != UINT16_MAX){
                 model->mGraphNodes[index].mDrawElements.erase(model->mGraphNodes[index].mDrawElements.begin() + deleteIdx);
+                if(!mModelUnsaved) mModelUnsaved = true;
             }
             ImGui::TreePop();
         }
@@ -280,7 +340,7 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
             } else {
                 model->mGraphNodes[index].ChildIndex = id;
             }
-
+            if(!mModelUnsaved) mModelUnsaved = true;
         }
         if(childrenOpen){
             if(model->mGraphNodes[index].ChildIndex != -1) BinTreeNodeUI(model, model->mGraphNodes[index].ChildIndex);
@@ -295,7 +355,7 @@ void UEditorTab::BinTreeNodeUI(std::unique_ptr<BIN::Model>& model, uint32_t inde
     }
 }
 
-void UEditorTab::MdlTreeNodeUI(std::unique_ptr<MDL::Model>& model, uint32_t index){
+void UModelEditContext::MdlTreeNodeUI(std::unique_ptr<MDL::Model>& model, uint32_t index){
     bool open = ImGui::TreeNodeEx(std::format("Bone {}", index).c_str(), (SelectedResource == &model->mGraphNodes[index] ? ImGuiTreeNodeFlags_Selected : 0));
 
     if(index != 0 && ImGui::BeginPopupContextItem(std::format("##binScenegraphContextMenu{}", index).c_str())){
@@ -344,7 +404,7 @@ void UEditorTab::MdlTreeNodeUI(std::unique_ptr<MDL::Model>& model, uint32_t inde
     }
 }
 
-void UEditorTab::RenderModel(float dt){
+void UModelEditContext::RenderModel(float dt){
     mCamera.Update(dt);
     glm::mat4 mvp = mCamera.mProjection * mCamera.mView * Identity;
     if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
@@ -355,14 +415,7 @@ void UEditorTab::RenderModel(float dt){
     }
 }
 
-void UEditorTab::ViewportClicked(int32_t id){
-    if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
-        SelectedType = SelectedResourceType::GraphNode;
-        SelectedResource = &mModelFurniture->mGraphNodes[id];
-    }
-}
-
-void UEditorTab::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
+void UModelEditContext::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
     ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
     ImGuizmo::SetRect(viewportPos.x, viewportPos.y, viewportSize.x, viewportSize.y);
 
@@ -374,68 +427,34 @@ void UEditorTab::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
     if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr && SelectedType == SelectedResourceType::GraphNode){
         if(ImGuizmo::Manipulate(&mCamera.mView[0][0], &mCamera.mProjection[0][0], ImGuizmo::OPERATION::TRANSLATE | ImGuizmo::OPERATION::ROTATE | ImGuizmo::OPERATION::SCALE, ImGuizmo::LOCAL, &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Transform[0][0])){
             ImGuizmo::DecomposeMatrixToComponents(&static_cast<BIN::SceneGraphNode*>(SelectedResource)->Transform[0][0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Position[0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Rotation[0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Scale[0]);
+            if(!mModelUnsaved) mModelUnsaved = true;
         }
     }
 }
 
-void UEditorTab::RenderTimelineAndRes(){
-    if(mModelArchive != nullptr){
-        ImGui::BeginGroup();
-        if(ImGui::BeginListBox("##animFilesListBox")){
-            if(mCurrentModelType == EModelType::Furniture && mModelArchive->GetFolder("anm") != nullptr){
-                for(auto file : mModelArchive->GetFolder("anm")->GetFiles()){
-                    float width = ImGui::CalcTextSize(file->GetName().c_str()).x;
-                    ImGui::SetNextItemWidth(width + 3);
-                    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10);
-                    if(ImGui::Selectable(file->GetName().c_str())){
-                        // load furniture animation, set up timeline
-                    }
-                    ImGui::PopStyleVar(1);
-                }
-            }
-            ImGui::EndListBox();
+void UModelEditContext::RenderTimeline(){
+    if(mCurrentModelType == EModelType::Furniture && mFurnitureAnimation != nullptr){
+        ImTimeline::BeginTimeline();
+        for(auto [node, track] : mFurnitureAnimation->GetTracks()){
+            ImTimeline::RenderTrack(track.mXPosTrack.mKeyFrames);
+            ImTimeline::RenderTrack(track.mYPosTrack.mKeyFrames);
+            ImTimeline::RenderTrack(track.mZPosTrack.mKeyFrames);
+
+            ImTimeline::RenderTrack(track.mYRotTrack.mKeyFrames);
+            ImTimeline::RenderTrack(track.mYRotTrack.mKeyFrames);
+            ImTimeline::RenderTrack(track.mZRotTrack.mKeyFrames);
+
+            ImTimeline::RenderTrack(track.mXScaleTrack.mKeyFrames);
+            ImTimeline::RenderTrack(track.mYScaleTrack.mKeyFrames);
+            ImTimeline::RenderTrack(track.mZScaleTrack.mKeyFrames);
         }
-        ImGui::EndGroup();
-        ImGui::SameLine();
-        ImGui::Text("Timeline Here");
-    } else if(mCurrentModelType == EModelType::Furniture && mFurnitureAnimation != nullptr){
-        ImGui::Text("Timeline Here");
+        ImTimeline::EndTimeline();
     }  else if(mCurrentModelType == EModelType::Actor && mActorSkeletalAnimation != nullptr){
         ImGui::Text("Timeline Here");
     }
-};
-
-void UEditorTab::RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir){
-    if(ImGui::TreeNode(dir->GetName().c_str())){
-        for(auto folder : dir->GetSubdirectories()){
-            RenderArcFolderTreeNode(folder);
-        }
-
-        for(auto file : dir->GetFiles()){
-            ImGui::Spacing();
-            ImGui::SameLine();
-            std::string icon = ICON_LC_FILE;
-            if(file->GetName().ends_with(".bin") || file->GetName().ends_with(".mdl")){
-                icon = ICON_LC_PYRAMID;
-            } else if (file->GetName().ends_with(".anm") || file->GetName().ends_with(".key")){
-                icon = ICON_LC_FILM;
-            }
-
-            if(ImGui::Selectable(std::format("{} {}", icon, file->GetName()).c_str())){
-                if(file->GetName().ends_with(".bin")){
-                    mCurrentModelType = EModelType::Furniture;
-                    bStream::CMemoryStream model(file->GetData(), file->GetSize(), bStream::Endianess::Big, bStream::OpenMode::In);
-                    mModelFurniture = std::make_unique<BIN::Model>();
-                    mModelFurniture->Load(&model);
-                    mModelChanged = false;
-                }
-            }
-        }
-        ImGui::TreePop();
-    }
 }
 
-void UEditorTab::RenderSceneTreePanel(){
+void UModelEditContext::RenderSceneTreePanel(){
     if(mCurrentModelType == EModelType::Furniture){
         ImGui::Text("SceneGraph");
         ImGui::Separator();
@@ -725,15 +744,9 @@ void UEditorTab::RenderSceneTreePanel(){
             ImGui::TreePop();
         }
     }
-
-    if(mModelArchive != nullptr){
-        ImGui::Text("Archive");
-        ImGui::Separator();
-        RenderArcFolderTreeNode(mModelArchive->GetRoot());
-    }
 }
 
-void UEditorTab::RenderDetailsPanel(){
+void UModelEditContext::RenderDetailsPanel(){
     if(mCurrentModelType == EModelType::Furniture && SelectedType != SelectedResourceType::None && SelectedResource != nullptr){
         switch(SelectedType){
             case SelectedResourceType::GraphNode: {
@@ -892,6 +905,7 @@ void UEditorTab::RenderDetailsPanel(){
                     int w, h, channels;
                     unsigned char* img = stbi_load(FilePath.c_str(), &w, &h, &channels, 4);
                     if(img != nullptr){
+                        if(!mModelUnsaved) mModelUnsaved = true;
                         reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->SetImage(img, w*h*4, w, h);
                         stbi_image_free(img);
                     } else {
@@ -912,6 +926,7 @@ void UEditorTab::RenderDetailsPanel(){
                     if(!stbi_write_png(FilePath.c_str(), reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->Width, reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->Height, 4, reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->ImageData, 4*reinterpret_cast<BIN::TextureHeader*>(SelectedResource)->Width)){
                         ImGui::InsertNotification({ImGuiToastType::Error, 3000, std::format("Failed to Write Image\nPath: {}", FilePath).data()});
                     }
+                    if(!mModelUnsaved) mModelUnsaved = true;
                 }
       		}
 
@@ -985,8 +1000,8 @@ void UEditorTab::RenderDetailsPanel(){
                             triangleCount += shp.mesh.indices.size();
                         }
                         ImGui::InsertNotification({ImGuiToastType::Info, 1000, std::format("TriStripped Faces {} / {}", stripCount, triangleCount).data()});
-
                         batch->ReloadMeshes();
+                        if(!mModelUnsaved) mModelUnsaved = true;
                     }
                 }
       		}
@@ -1068,6 +1083,77 @@ void UEditorTab::RenderDetailsPanel(){
             }
         }
     }
+
+}
+
+void UModelEditContext::SelectNode(int32_t id){
+    if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
+        SelectedType = SelectedResourceType::GraphNode;
+        SelectedResource = &mModelFurniture->mGraphNodes[id];
+    }
+}
+
+inline void UEditorTab::ViewportClicked(int32_t id){
+    mModelContext->SelectNode(id);
+}
+
+inline void UEditorTab::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
+    if(mModelContext != nullptr) mModelContext->RenderGizmos(viewportPos, viewportSize);
+}
+
+inline void UEditorTab::RenderTimeline(){
+    if(mModelContext != nullptr) mModelContext->RenderTimeline();
+};
+
+void UEditorTab::RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir){
+    if(ImGui::TreeNode(dir->GetName().c_str())){
+        for(auto folder : dir->GetSubdirectories()){
+            RenderArcFolderTreeNode(folder);
+        }
+
+        for(auto file : dir->GetFiles()){
+            ImGui::Spacing();
+            ImGui::SameLine();
+            std::string icon = ICON_LC_FILE;
+            if(file->GetName().ends_with(".bin") || file->GetName().ends_with(".mdl")){
+                icon = ICON_LC_PYRAMID;
+            } else if (file->GetName().ends_with(".anm") || file->GetName().ends_with(".key")){
+                icon = ICON_LC_FILM;
+            }
+
+            if(ImGui::Selectable(std::format("{} {}", icon, file->GetName()).c_str())){
+                if(mModelContext != nullptr && mModelContext->IsModified()){
+                    mOpenUnsavedChangesModal = true;
+                    mQueuedOpenFile = file;
+                    continue;
+                }
+                if(file->GetName().ends_with(".bin") || file->GetName().ends_with(".mdl")){
+                    bStream::CMemoryStream modelStream(file->GetData(), file->GetSize(), bStream::Endianess::Big, bStream::OpenMode::In);
+                    mModelContext = std::make_unique<UModelEditContext>(&modelStream);
+                    mCurrentModelFile = file;
+                } else if(file->GetName().ends_with(".anm") || file->GetName().ends_with(".key")) {
+                    bStream::CMemoryStream animStream(file->GetData(), file->GetSize(), bStream::Endianess::Big, bStream::OpenMode::In);
+                    mModelContext->LoadAnimation(&animStream);
+                    //mCurrentAnimationFile
+                }
+            }
+        }
+        ImGui::TreePop();
+    }
+}
+
+inline void UEditorTab::RenderSceneTreePanel(){
+    if(mModelContext != nullptr) mModelContext->RenderSceneTreePanel();
+
+    if(mModelArchive != nullptr){
+        ImGui::Text("Archive");
+        ImGui::Separator();
+        RenderArcFolderTreeNode(mModelArchive->GetRoot());
+    }
+}
+
+inline void UEditorTab::RenderDetailsPanel(){
+    if(mModelContext != nullptr) mModelContext->RenderDetailsPanel();
 }
 
 void UContext::Render(float deltaTime) {
@@ -1162,7 +1248,7 @@ void UContext::Render(float deltaTime) {
 			//assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
 			for(auto tab : mTabs){
-			    tab->GetCamera().UpdateSize(winSize);
+			    tab->GetCamera()->UpdateSize(winSize);
 			}
 
 		}
@@ -1186,7 +1272,7 @@ void UContext::Render(float deltaTime) {
 
 		// render tab content
 		if(mSelectedTab != nullptr){
-		    mSelectedTab->RenderModel(deltaTime);
+		    mSelectedTab->RenderModelContext(deltaTime);
 		}
 
 		ImVec2 frameSize = {ImGui::GetStyle().WindowBorderSize, ImGui::GetStyle().WindowBorderSize};
@@ -1209,7 +1295,7 @@ void UContext::Render(float deltaTime) {
 	if(mSelectedTab != nullptr && mSelectedTab->ShouldShowTimeline()){
     	ImGui::SetNextWindowClass(&mainWindowOverride);
     	ImGui::Begin("timelineWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
-    	mSelectedTab->RenderTimelineAndRes();
+    	mSelectedTab->RenderTimeline();
     	ImGui::End();
 	}
 
@@ -1227,6 +1313,38 @@ void UContext::Render(float deltaTime) {
 	}
 	ImGui::End();
 
+	if(mSelectedTab != nullptr && mSelectedTab->ShouldOpenUnsavedChanges()){
+	    mSelectedTab->ShouldOpenUnsavedChanges(false);
+		ImGui::OpenPopup("Unsaved Changes");
+	}
+
+	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSize(ImGui::GetMainViewport()->Size * ImVec2(0.25f, 0.2f));
+	if(ImGui::BeginPopupModal("Unsaved Changes", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
+        ImGui::NewLine();
+        ImVec2 textSize = ImGui::CalcTextSize("Close Model without saving changes?");
+        ImVec2 winSize = ImGui::GetWindowSize();
+        ImGui::SetCursorPosX((winSize.x * 0.5f) - (textSize.x * 0.5f));
+        ImGui::Text("Close Model without saving changes?", nullptr);
+        ImGui::NewLine();
+	    ImGui::SetCursorPosX((winSize.x * 0.5f) - (textSize.x * 0.5f));
+		if(ImGui::Button("Close")){
+    		mSelectedTab->OpenQueuedModel();
+    	    ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if(ImGui::Button("Save and Close")){
+		    mSelectedTab->SaveModel();
+			mSelectedTab->OpenQueuedModel();
+		    ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if(ImGui::Button("Cancel")){
+		    ImGui::CloseCurrentPopup();
+		}
+        ImGui::EndPopup();
+	}
+
 	// Notifications style setup
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.f); // Disable round borders
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.f); // Disable borders
@@ -1237,7 +1355,12 @@ void UContext::Render(float deltaTime) {
 	//mGrid.Render({(sin(Rotate) * (Zoom * 2)), Zoom, (cos(Rotate) * (Zoom * 2))}, mCamera.GetProjectionMatrix(), mCamera.GetViewMatrix());
 }
 
-void UContext::RenderMainWindow(float deltaTime) {
+void UContext::DropFiles(int count, const char** paths){
+    for(int i = 0; i < count; i++){
+        mTabs.push_back(std::make_shared<UEditorTab>(paths[i]));
+		mTabs.back()->GetCamera()->UpdateSize({mPrevWinWidth, mPrevWinHeight});
+    }
+	mSelectedTab = mTabs.back();
 }
 
 void UContext::RenderMenuBar() {
@@ -1265,7 +1388,9 @@ void UContext::RenderMenuBar() {
 		}
 
 		if (ImGui::MenuItem("Save...")) {
-		    if(mSelectedTab != nullptr) mSelectedTab->SaveModel();
+		    if(mSelectedTab != nullptr) {
+				mSelectedTab->SaveModel();
+			}
 		}
 
 		if (ImGui::MenuItem("Save As...")) {
@@ -1286,9 +1411,9 @@ void UContext::RenderMenuBar() {
 	    IGFD::FileDialogConfig config { .flags = ImGuiFileDialogFlags_Modal };
 		if(mSelectedTab->HasArchive()){
 		    ImGuiFileDialog::Instance()->OpenDialog("SaveAsModelDialog", "Save Archive", "Archive (*.arc){.arc},Compressed Archive (*.szp){.szp}", config);
-		} else if(mSelectedTab->IsModelType(EModelType::Furniture)){
+		} else if(mSelectedTab->IsModelContextType(EModelType::Furniture)){
 		    ImGuiFileDialog::Instance()->OpenDialog("SaveAsModelDialog", "Save Model", "Room Model (*.bin){.bin}", config);
-		} else if(mSelectedTab->IsModelType(EModelType::Actor)) {
+		} else if(mSelectedTab->IsModelContextType(EModelType::Actor)) {
 		    ImGuiFileDialog::Instance()->OpenDialog("SaveAsModelDialog", "Save Model", "Actor Model (*.mdl){.mdl}", config);
 		}
 	}
@@ -1300,7 +1425,6 @@ void UContext::RenderMenuBar() {
 		if (ImGuiFileDialog::Instance()->IsOk()) {
 			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
 			mTabs.push_back(std::make_shared<UEditorTab>(std::filesystem::path(FilePath)));
-			mTabs.back()->GetCamera().UpdateSize({mPrevWinWidth, mPrevWinHeight});
 			mSelectedTab = mTabs.back();
 
 			mModelSelectOpen = false;

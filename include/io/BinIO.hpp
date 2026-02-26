@@ -236,7 +236,10 @@ namespace BIN {
         glm::mat4 GetNodeFrame(uint16_t node);
         void Step(float dt) { mTime += dt * 10; if(mTime >= mFrameCount && mLoop) { mTime = 0.0f; ResetTracks(); } else if(mTime >= mFrameCount) { mPlaying = false; } }
 
+        std::map<uint16_t, GraphNodeTrack>& GetTracks() { return mAnimationTracks; }
+
         void Load(Model* model, bStream::CStream* stream);
+        uint32_t GetFrameCount() { return mFrameCount; }
 
         Animation(){}
         ~Animation(){}

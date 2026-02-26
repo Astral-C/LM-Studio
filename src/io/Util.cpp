@@ -21,17 +21,17 @@ float InterpolateHermite(float factor, float timeA, float valueA, float outTange
 }
 
 float MixTrack(LTrackCommon& track, float time, uint32_t& previousKey, uint32_t& nextKey, bool adjustSlope, bool useHermite){
-	if(track.mKeys.size() == 1) return track.mFrames[track.mKeys[0]].value;
-	if(nextKey < track.mKeys.size() && previousKey < track.mKeys.size()){
-		float slopeOut = track.mFrames[track.mKeys[previousKey]].outslope;
-		float slopeIn = track.mFrames[track.mKeys[nextKey]].inslope;
+	if(track.mKeyFrames.size() == 1) return track.mKeyFrames[0].value;
+	if(nextKey < track.mKeyFrames.size() && previousKey < track.mKeyFrames.size()){
+		float slopeOut = track.mKeyFrames[previousKey].outslope;
+		float slopeIn = track.mKeyFrames[nextKey].inslope;
 		if(adjustSlope){
-			slopeOut = slopeOut * (track.mKeys[nextKey] - track.mKeys[previousKey]);
-			slopeIn = slopeIn * (track.mKeys[nextKey] - track.mKeys[previousKey]);
+			slopeOut = slopeOut * (track.mKeyFrames[nextKey].frame - track.mKeyFrames[previousKey].frame);
+			slopeIn = slopeIn * (track.mKeyFrames[nextKey].frame - track.mKeyFrames[previousKey].frame);
 		}
 		float v = 0.0f;
 		//if(!useHermite){
-		    v = glm::mix(track.mFrames[track.mKeys[previousKey]].value, track.mFrames[track.mKeys[nextKey]].value, (time - track.mFrames[track.mKeys[previousKey]].frame) / (track.mFrames[track.mKeys[nextKey]].frame - track.mFrames[track.mKeys[previousKey]].frame));
+		    v = glm::mix(track.mKeyFrames[previousKey].value, track.mKeyFrames[nextKey].value, (time - track.mKeyFrames[previousKey].frame) / (track.mKeyFrames[nextKey].frame - track.mKeyFrames[previousKey].frame));
 		/*
 	    } else {
     		v = InterpolateHermite(
@@ -46,12 +46,12 @@ float MixTrack(LTrackCommon& track, float time, uint32_t& previousKey, uint32_t&
 		}
   */
 
-		if(time >= track.mFrames[track.mKeys[nextKey]].frame){
+		if(time >= track.mKeyFrames[nextKey].frame){
 			nextKey += 1;
 			previousKey += 1;
 		}
 		return v;
 	} else {
-		return track.mFrames[track.mKeys.back()].value;
+		return track.mKeyFrames.back().value;
 	}
 }

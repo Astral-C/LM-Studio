@@ -23,8 +23,7 @@ class LTrackCommon
 {
     ETrackType mType;
 public:
-    std::vector<int32_t> mKeys;
-    std::map<int32_t, LKeyframeCommon> mFrames;
+    std::vector<LKeyframeCommon> mKeyFrames;
 
     float GetFrame(uint32_t frame);
 

@@ -38,12 +38,7 @@ void LTrackCommon::LoadTrackEx(bStream::CStream* stream, uint32_t keyframeDataOf
                 keyframe.outslope = KeyframeIO::ReadValue(stream, valueSize);
             }
         }
-        mFrames.insert(std::make_pair((uint32_t)keyframe.frame, keyframe));
-    }
-
-    for (auto& frame : mFrames)
-    {
-        mKeys.push_back(frame.first);
+        mKeyFrames.push_back(keyframe);
     }
 
     stream->seek(streamPosition);
