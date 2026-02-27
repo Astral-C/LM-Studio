@@ -451,7 +451,16 @@ void UModelEditContext::RenderTimeline(){
 
         float curFrame = mTimelineState.currentFrame;
 
-        ImTimeline::BeginTimeline(&mTimelineState);
+        bool playing = mFurnitureAnimation->Playing();
+
+        ImTimeline::BeginTimeline(&mTimelineState, &playing);
+
+        if(playing && !mFurnitureAnimation->Playing()){
+            mFurnitureAnimation->Play();
+        } else if(!playing && mFurnitureAnimation->Playing()){
+            mFurnitureAnimation->Pause();
+        }
+
         for(auto& [node, track] : mFurnitureAnimation->GetTracks()){
             if(ImTimeline::RenderTrack(track.mXPosTrack.mKeyFrames)){
                 std::sort(track.mXPosTrack.mKeyFrames.begin(), track.mXPosTrack.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });

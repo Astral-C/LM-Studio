@@ -234,6 +234,7 @@ namespace BIN {
         bool Playing() { return mPlaying; }
         void ResetTracks();
         void Play();
+        void Pause();
         void Stop();
 
         glm::mat4 GetNodeFrame(uint16_t node);

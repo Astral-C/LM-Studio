@@ -7,11 +7,9 @@
 #include <fcntl.h>
 
 namespace {
-    ImVec2 canvasSize { 0, 0 };
-    ImVec2 canvasPosition { 0, 0 };
     ImVec2 timelineOrigin { 0, 0 };
+    ImVec2 timelineCanvasSize { 0, 0 };
     ImVec2 playheadPosition { 0, 0 };
-    ImVec2 stickyCrontrolsPos { 0, 0 };
     bool renderingTimeline { false };
     ImDrawList* list { nullptr };
     float zoom { 10.0f };
@@ -20,63 +18,51 @@ namespace {
     ImTimeline::State* currentState { nullptr };
 }
 
-void ImTimeline::BeginTimeline(ImTimeline::State* state){
+void ImTimeline::BeginTimeline(ImTimeline::State* state, bool* playing){
     assert(renderingTimeline == false);
     renderingTimeline = true;
     currentState = state;
-    canvasSize = ImGui::GetContentRegionAvail();
-    canvasPosition = ImGui::GetCursorScreenPos();
-    timelineOrigin = canvasPosition;
+    ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+    ImVec2 canvasPosition = ImGui::GetCursorScreenPos();
 
     list = ImGui::GetWindowDrawList();
 
     ImGuiIO& io = ImGui::GetIO();
     ImGuiStyle& style = ImGui::GetStyle();
 
-    playheadPosition = canvasPosition + ImVec2(state->currentFrame, style.FrameBorderSize);
 
-    list->AddRectFilled(canvasPosition, canvasPosition+(canvasSize + ImVec2(style.FrameBorderSize, style.FrameBorderSize)), 0xFF303030, style.FrameRounding);
-
-    canvasPosition += { style.FrameBorderSize, style.FrameBorderSize };
-    canvasSize -= { style.FrameBorderSize, style.FrameBorderSize};
-
-    ImGui::PushClipRect(canvasPosition, canvasPosition+canvasSize, false);
-    stickyCrontrolsPos = canvasPosition;
     ImVec2 iconSize = ImGui::CalcTextSize(ICON_LC_PLAY);
-    canvasPosition.y += style.FramePadding.y + iconSize.y;
-
-    //list->PushClipRect(canvasPosition, canvasPosition+canvasSize);
-    if(ImRect(canvasPosition, canvasPosition+canvasSize).Contains(io.MousePos)){
-        if(io.KeyShift){
-            zoom += io.MouseWheel;
-        } else {
-            viewPosition.y = std::max(0.0f, viewPosition.y + io.MouseWheel * 5);
-
-            if(state->trackCount != -1){
-                viewPosition.y = std::min(viewPosition.y, (12 * state->trackCount) - (canvasSize.y / 10));
-            }
+    ImVec2 iconPos = canvasPosition+ImVec2(canvasSize.x - style.FramePadding.x - iconSize.x, 0);
+    list->AddRectFilled(canvasPosition, canvasPosition+ImVec2(canvasSize.x, iconSize.y + style.FramePadding.y), 0xFF282828);
+    if(playing != nullptr){
+        list->AddText(iconPos + ImVec2(0,style.FramePadding.y), 0xFFFFFFFF, *playing == false ? ICON_LC_PLAY : ICON_LC_PAUSE);
+        if(playing != nullptr && io.MouseClicked[0] && ImRect(iconPos, iconPos+iconSize).Contains(io.MousePos)){
+            *playing = !*playing;
         }
     }
-    canvasPosition -= viewPosition;
+    ImGui::Dummy({canvasSize.x, iconSize.y});
+    canvasSize = ImGui::GetContentRegionAvail();
+
+
+    ImGui::BeginChild("##timeline", canvasSize);
+    timelineOrigin = ImGui::GetCursorScreenPos();
 }
 
 void ImTimeline::EndTimeline(){
     ImGuiStyle& style = ImGui::GetStyle();
     ImGuiIO& io = ImGui::GetIO();
+    ImGui::Dummy({1, 2});
 
+    ImVec2 trueSize = ImGui::GetCursorScreenPos() - timelineOrigin;
     if(!currentState->draggingKeyframe && io.MouseDown[0]){
         currentState->currentFrame = (io.MousePos.x - timelineOrigin.x) / zoom;
     }
+    ImVec2 playheadTopLeft = timelineOrigin+ImVec2((currentState->currentFrame * zoom)-1, 0);
+    ImVec2 playheadBottomRight = timelineOrigin+ImVec2((currentState->currentFrame * zoom)+3,trueSize.y);
 
-    list->AddRectFilled(playheadPosition+ImVec2((currentState->currentFrame * zoom)-1,0), playheadPosition+ImVec2((currentState->currentFrame * zoom)+3, canvasSize.y), 0xAA323232);
+    ImGui::GetWindowDrawList()->AddRectFilled(playheadTopLeft, playheadBottomRight, 0x99363636);
+    ImGui::EndChild();
 
-    ImVec2 iconSize = ImGui::CalcTextSize(ICON_LC_PLAY);
-    list->AddRectFilled(stickyCrontrolsPos, stickyCrontrolsPos+ImVec2(canvasSize.x, iconSize.y + style.FramePadding.y), 0xFF282828);
-    list->AddText(stickyCrontrolsPos+ImVec2(canvasSize.x - style.FramePadding.x - iconSize.x, style.FramePadding.y), 0xFFFFFFFF, ICON_LC_PLAY);
-
-    list->PopClipRect();
-    canvasSize = { 0, 0 };
-    canvasPosition = { 0, 0 };
     renderingTimeline = false;
     list = nullptr;
     litTrack = false;
@@ -89,8 +75,13 @@ bool ImTimeline::RenderTrack(std::vector<LKeyframeCommon> &keyframes, int keyfra
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec2 padding = style.FramePadding;
 
+    ImDrawList* list = list = ImGui::GetWindowDrawList();
+    ImVec2 canvasPosition = ImGui::GetCursorScreenPos();
+    ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+    ImGui::Dummy({canvasSize.x, 10});
+
     list->AddRectFilled(canvasPosition, canvasPosition+ImVec2(canvasSize.x, 10 + (padding.y*2)), 0xFF181818 + (litTrack * 0x00040404), 0);
-    canvasPosition.y += 05 + padding.y;
+    canvasPosition.y += 5 + padding.y;
 
     for(auto& keyframe : keyframes){
         ImVec2 keyframePos = { canvasPosition.x + (keyframe.frame * zoom), canvasPosition.y };

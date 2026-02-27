@@ -16,7 +16,7 @@ namespace ImTimeline {
       int trackCount { -1 };
     };
 
-    void BeginTimeline(ImTimeline::State* state);
+    void BeginTimeline(ImTimeline::State* state, bool* playing = nullptr);
     void EndTimeline();
 
     bool RenderTrack(std::vector<LKeyframeCommon>& keyframes, int keyframeScale=5);

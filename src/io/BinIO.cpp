@@ -1481,6 +1481,10 @@ namespace BIN {
     }
 
 
+    void Animation::Pause(){
+        mPlaying = false;
+    }
+
     void Animation::Stop() {
         mPlaying = false;
         mTime = 0.0f;
