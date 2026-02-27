@@ -12,6 +12,7 @@
 #include "io/MdlIO.hpp"
 #include "io/TxpIO.hpp"
 #include "Camera.hpp"
+#include "USequencer.hpp"
 
 enum class EModelType {
     Actor,
@@ -45,6 +46,7 @@ class UModelEditContext {
     bool mModelUnsaved { false };
     void* SelectedResource { nullptr };
     SelectedResourceType SelectedType { SelectedResourceType::None };
+    ImTimeline::State mTimelineState;
 public:
 	UCamera mCamera;
 
@@ -94,12 +96,12 @@ public:
 
 	std::string mName;
     inline void RenderDetailsPanel();
-    inline void RenderSceneTreePanel();
+    inline void RenderSceneTreePanel(ImVec2 size);
     inline void RenderTimeline();
     inline void RenderGizmos(ImVec2 viewportPosition, ImVec2 viewportSize);
     inline void RenderModelContext(float dt) { if(mModelContext != nullptr) mModelContext->RenderModel(dt); }
 
-    void RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir);
+    void RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir, ImVec2 size);
 
     inline void ViewportClicked(int32_t id);
     void SaveModel(std::filesystem::path filepath="");

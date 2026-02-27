@@ -1392,6 +1392,31 @@ namespace BIN {
         }
     }
 
+    inline void FindFrameSet(float time, LTrackCommon& track, uint32_t& prevKeyframe, uint32_t& nextKeyframe){
+        for(int i = 0; i < track.mKeyFrames.size(); i++){
+            if(time >= track.mKeyFrames[i].frame){
+                prevKeyframe = i;
+                nextKeyframe = i+1;
+            } else if(time < track.mKeyFrames[i].frame){
+                break;
+            }
+        }
+    }
+
+    void GraphNodeTrack::SetFrame(float frame){
+        FindFrameSet(frame, mXPosTrack, mPreviousPosKeyX, mNextPosKeyX);
+        FindFrameSet(frame, mYPosTrack, mPreviousPosKeyY, mNextPosKeyY);
+        FindFrameSet(frame, mZPosTrack, mPreviousPosKeyZ, mNextPosKeyZ);
+
+        FindFrameSet(frame, mXRotTrack, mPreviousRotKeyX, mNextRotKeyX);
+        FindFrameSet(frame, mYRotTrack, mPreviousRotKeyY, mNextRotKeyY);
+        FindFrameSet(frame, mZRotTrack, mPreviousRotKeyZ, mNextRotKeyZ);
+
+        FindFrameSet(frame, mXScaleTrack, mPreviousScaleKeyX, mNextScaleKeyX);
+        FindFrameSet(frame, mYScaleTrack, mPreviousScaleKeyY, mNextScaleKeyY);
+        FindFrameSet(frame, mZScaleTrack, mPreviousScaleKeyZ, mNextScaleKeyZ);
+    }
+
     glm::mat4 Animation::GetNodeFrame(uint16_t node){
         if(node > mAnimationTracks.size()) return glm::mat4(1.0f);
 
@@ -1400,9 +1425,9 @@ namespace BIN {
         float sy = track.mYScaleTrack.mKeyFrames.size() > 0 ? MixTrack(track.mYScaleTrack, mTime, track.mPreviousScaleKeyY, track.mNextScaleKeyY) : 1.0f;
         float sz = track.mZScaleTrack.mKeyFrames.size() > 0 ? MixTrack(track.mZScaleTrack, mTime, track.mPreviousScaleKeyZ, track.mNextScaleKeyZ) : 1.0f;
 
-        float rz = track.mXRotTrack.mKeyFrames.size() > 0 ? MixTrack(track.mXRotTrack, mTime, track.mPreviousRotKeyX, track.mNextRotKeyX) : 0.0f;
+        float rx = track.mXRotTrack.mKeyFrames.size() > 0 ? MixTrack(track.mXRotTrack, mTime, track.mPreviousRotKeyX, track.mNextRotKeyX) : 0.0f;
         float ry = track.mYRotTrack.mKeyFrames.size() > 0 ? MixTrack(track.mYRotTrack, mTime, track.mPreviousRotKeyY, track.mNextRotKeyY) : 0.0f;
-        float rx = track.mZRotTrack.mKeyFrames.size() > 0 ? MixTrack(track.mZRotTrack, mTime, track.mPreviousRotKeyZ, track.mNextRotKeyZ) : 0.0f;
+        float rz = track.mZRotTrack.mKeyFrames.size() > 0 ? MixTrack(track.mZRotTrack, mTime, track.mPreviousRotKeyZ, track.mNextRotKeyZ) : 0.0f;
 
         float px = track.mXPosTrack.mKeyFrames.size() > 0 ? MixTrack(track.mXPosTrack, mTime, track.mPreviousPosKeyX, track.mNextPosKeyX) : 0.0f;
         float py = track.mYPosTrack.mKeyFrames.size() > 0 ? MixTrack(track.mYPosTrack, mTime, track.mPreviousPosKeyY, track.mNextPosKeyY) : 0.0f;
@@ -1410,10 +1435,10 @@ namespace BIN {
 
         glm::mat4 frame(1.0f);
         frame = glm::scale(frame, glm::vec3(sx, sy, sz));
-        frame = glm::rotate(frame, glm::radians(-rx), glm::vec3(1, 0, 0));
-        frame = glm::rotate(frame, glm::radians(-ry), glm::vec3(0, 1, 0));
-        frame = glm::rotate(frame, glm::radians(-rz), glm::vec3(0, 0, 1));
-        frame = glm::translate(frame, glm::vec3(pz, py, px));
+        frame = glm::rotate(frame, glm::radians(rx), glm::vec3(1, 0, 0));
+        frame = glm::rotate(frame, glm::radians(ry), glm::vec3(0, 1, 0));
+        frame = glm::rotate(frame, glm::radians(rz), glm::vec3(0, 0, 1));
+        frame = glm::translate(frame, glm::vec3(px, py, pz));
         return frame;
     }
 
@@ -1438,6 +1463,15 @@ namespace BIN {
             track.second.mPreviousPosKeyZ = 0;
             track.second.mNextPosKeyZ = 1;
         }
+    }
+
+    void Animation::SetFrame(float frame) {
+        mTime = frame;
+
+        for(auto& track : mAnimationTracks){
+            track.second.SetFrame(mTime);
+        }
+
     }
 
     void Animation::Play() {

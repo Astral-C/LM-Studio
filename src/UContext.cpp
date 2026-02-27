@@ -4,12 +4,14 @@
 #include "Camera.hpp"
 #include "IconsLucide.h"
 #include "io/BinIO.hpp"
+#include "io/KeyframeIO.hpp"
 #include "io/MdlIO.hpp"
 #include "util/UUIUtil.hpp"
 #include "USequencer.hpp"
 #include "ufbx.h"
 
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -210,6 +212,7 @@ void UModelEditContext::LoadAnimation(bStream::CStream* stream){
     if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
         mFurnitureAnimation = std::make_unique<BIN::Animation>();
         mFurnitureAnimation->Load(mModelFurniture.get(), stream);
+        mTimelineState.trackCount = mModelFurniture.get()->mGraphNodes.size()*9;
     }
     if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
         mActorSkeletalAnimation = std::make_unique<MDL::Animation>();
@@ -408,11 +411,13 @@ void UModelEditContext::RenderModel(float dt){
     mCamera.Update(dt);
     glm::mat4 mvp = mCamera.mProjection * mCamera.mView * Identity;
     if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr){
-       	mModelFurniture->Draw(&mvp, 0, false, nullptr);
+       	mModelFurniture->Draw(&mvp, 0, false, mFurnitureAnimation.get());
+        if(mFurnitureAnimation != nullptr &&  mFurnitureAnimation->Playing()) mFurnitureAnimation->Step(dt);
     } else if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
        	mModelActor->Draw(&mvp, 0, false, nullptr, nullptr);
         mModelActor->mSkeletonRenderer.Draw(&mCamera);
     }
+
 }
 
 void UModelEditContext::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
@@ -434,20 +439,47 @@ void UModelEditContext::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
 
 void UModelEditContext::RenderTimeline(){
     if(mCurrentModelType == EModelType::Furniture && mFurnitureAnimation != nullptr){
-        ImTimeline::BeginTimeline();
-        for(auto [node, track] : mFurnitureAnimation->GetTracks()){
-            ImTimeline::RenderTrack(track.mXPosTrack.mKeyFrames);
-            ImTimeline::RenderTrack(track.mYPosTrack.mKeyFrames);
-            ImTimeline::RenderTrack(track.mZPosTrack.mKeyFrames);
+        if(ImGui::IsWindowHovered() && ImGui::IsKeyPressed(ImGuiKey_Space)){
+            if(mFurnitureAnimation->Playing()){
+                mFurnitureAnimation->Stop();
+            } else {
+                mFurnitureAnimation->Play();
+            }
+        }
 
-            ImTimeline::RenderTrack(track.mYRotTrack.mKeyFrames);
-            ImTimeline::RenderTrack(track.mYRotTrack.mKeyFrames);
-            ImTimeline::RenderTrack(track.mZRotTrack.mKeyFrames);
+        mTimelineState.currentFrame = mFurnitureAnimation->GetFrame();
+
+        float curFrame = mTimelineState.currentFrame;
+
+        ImTimeline::BeginTimeline(&mTimelineState);
+        for(auto& [node, track] : mFurnitureAnimation->GetTracks()){
+            if(ImTimeline::RenderTrack(track.mXPosTrack.mKeyFrames)){
+                std::sort(track.mXPosTrack.mKeyFrames.begin(), track.mXPosTrack.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+
+            if(ImTimeline::RenderTrack(track.mYPosTrack.mKeyFrames)){
+                std::sort(track.mYPosTrack.mKeyFrames.begin(), track.mYPosTrack.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+
+            if(ImTimeline::RenderTrack(track.mZPosTrack.mKeyFrames)){
+                std::sort(track.mZPosTrack.mKeyFrames.begin(), track.mZPosTrack.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+
+            if(ImTimeline::RenderTrack(track.mXRotTrack.mKeyFrames)){
+                std::sort(track.mXRotTrack.mKeyFrames.begin(), track.mXRotTrack.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+            if(ImTimeline::RenderTrack(track.mYRotTrack.mKeyFrames)){
+                std::sort(track.mYRotTrack.mKeyFrames.begin(), track.mYRotTrack.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+            if(ImTimeline::RenderTrack(track.mZRotTrack.mKeyFrames)){
+                std::sort(track.mZRotTrack.mKeyFrames.begin(), track.mZRotTrack.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
 
             ImTimeline::RenderTrack(track.mXScaleTrack.mKeyFrames);
             ImTimeline::RenderTrack(track.mYScaleTrack.mKeyFrames);
             ImTimeline::RenderTrack(track.mZScaleTrack.mKeyFrames);
         }
+        if(mTimelineState.currentFrame != curFrame) mFurnitureAnimation->SetFrame(mTimelineState.currentFrame);
         ImTimeline::EndTimeline();
     }  else if(mCurrentModelType == EModelType::Actor && mActorSkeletalAnimation != nullptr){
         ImGui::Text("Timeline Here");
@@ -1105,10 +1137,10 @@ inline void UEditorTab::RenderTimeline(){
     if(mModelContext != nullptr) mModelContext->RenderTimeline();
 };
 
-void UEditorTab::RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir){
+void UEditorTab::RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir, ImVec2 size){
     if(ImGui::TreeNode(dir->GetName().c_str())){
         for(auto folder : dir->GetSubdirectories()){
-            RenderArcFolderTreeNode(folder);
+            RenderArcFolderTreeNode(folder, size);
         }
 
         for(auto file : dir->GetFiles()){
@@ -1130,6 +1162,7 @@ void UEditorTab::RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir){
                 if(file->GetName().ends_with(".bin") || file->GetName().ends_with(".mdl")){
                     bStream::CMemoryStream modelStream(file->GetData(), file->GetSize(), bStream::Endianess::Big, bStream::OpenMode::In);
                     mModelContext = std::make_unique<UModelEditContext>(&modelStream);
+                    mModelContext->mCamera.UpdateSize(size);
                     mCurrentModelFile = file;
                 } else if(file->GetName().ends_with(".anm") || file->GetName().ends_with(".key")) {
                     bStream::CMemoryStream animStream(file->GetData(), file->GetSize(), bStream::Endianess::Big, bStream::OpenMode::In);
@@ -1142,13 +1175,13 @@ void UEditorTab::RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir){
     }
 }
 
-inline void UEditorTab::RenderSceneTreePanel(){
+inline void UEditorTab::RenderSceneTreePanel(ImVec2 size){
     if(mModelContext != nullptr) mModelContext->RenderSceneTreePanel();
 
     if(mModelArchive != nullptr){
         ImGui::Text("Archive");
         ImGui::Separator();
-        RenderArcFolderTreeNode(mModelArchive->GetRoot());
+        RenderArcFolderTreeNode(mModelArchive->GetRoot(), size);
     }
 }
 
@@ -1302,7 +1335,7 @@ void UContext::Render(float deltaTime) {
 	ImGui::SetNextWindowClass(&mainWindowOverride);
 	ImGui::Begin("sceneHierarchy", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 	if(mSelectedTab != nullptr){
-	    mSelectedTab->RenderSceneTreePanel();
+	    mSelectedTab->RenderSceneTreePanel(winSize);
 	}
 	ImGui::End();
 
@@ -1358,7 +1391,7 @@ void UContext::Render(float deltaTime) {
 void UContext::DropFiles(int count, const char** paths){
     for(int i = 0; i < count; i++){
         mTabs.push_back(std::make_shared<UEditorTab>(paths[i]));
-		mTabs.back()->GetCamera()->UpdateSize({mPrevWinWidth, mPrevWinHeight});
+		//mTabs.back()->GetCamera()->UpdateSize({mPrevWinWidth, mPrevWinHeight});
     }
 	mSelectedTab = mTabs.back();
 }

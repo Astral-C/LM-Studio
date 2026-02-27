@@ -173,6 +173,9 @@ namespace BIN {
         uint32_t mNextRotKeyX { 1 };
         uint32_t mNextRotKeyY { 1 };
         uint32_t mNextRotKeyZ { 1 };
+
+        void SetFrame(float frame);
+
     };
 
     static uint32_t mProgram { UINT32_MAX };
@@ -235,6 +238,9 @@ namespace BIN {
 
         glm::mat4 GetNodeFrame(uint16_t node);
         void Step(float dt) { mTime += dt * 10; if(mTime >= mFrameCount && mLoop) { mTime = 0.0f; ResetTracks(); } else if(mTime >= mFrameCount) { mPlaying = false; } }
+
+        void SetFrame(float frame);
+        float GetFrame() { return mTime; }
 
         std::map<uint16_t, GraphNodeTrack>& GetTracks() { return mAnimationTracks; }
 
