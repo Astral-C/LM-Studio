@@ -104,7 +104,7 @@ public:
     void RenderArcFolderTreeNode(std::shared_ptr<Archive::Folder> dir, ImVec2 size);
 
     inline void ViewportClicked(int32_t id);
-    void SaveModel(std::filesystem::path filepath="");
+    void SaveTab(std::filesystem::path filepath="");
     void SaveAnimation(std::filesystem::path filepath="");
     void OpenQueuedModel();
 

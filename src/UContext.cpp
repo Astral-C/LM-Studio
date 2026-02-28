@@ -224,7 +224,7 @@ void UModelEditContext::SaveAnimation(bStream::CStream* stream){
 
 }
 
-void UEditorTab::SaveModel(std::filesystem::path filepath){
+void UEditorTab::SaveTab(std::filesystem::path filepath){
     if(filepath.empty()){
         filepath = mLoadedPath;
     }
@@ -1376,7 +1376,7 @@ void UContext::Render(float deltaTime) {
 		}
 		ImGui::SameLine();
 		if(ImGui::Button("Save and Close")){
-		    mSelectedTab->SaveModel();
+		    mSelectedTab->SaveTab();
 			mSelectedTab->OpenQueuedModel();
 		    ImGui::CloseCurrentPopup();
 		}
@@ -1431,7 +1431,7 @@ void UContext::RenderMenuBar() {
 
 		if (ImGui::MenuItem("Save...")) {
 		    if(mSelectedTab != nullptr) {
-				mSelectedTab->SaveModel();
+				mSelectedTab->SaveTab();
 			}
 		}
 
@@ -1443,6 +1443,18 @@ void UContext::RenderMenuBar() {
 	}
 
 	ImGui::EndMainMenuBar();
+
+	if(ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_O)){
+	    mModelSelectOpen = true;
+	}
+
+	if(ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S)){
+	    if(mSelectedTab != nullptr) mSelectedTab->SaveTab();
+	}
+
+	if(ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)){
+	    if(mSelectedTab != nullptr) mModelSelectSaveAs = true;
+	}
 
 	if (mModelSelectOpen) {
 		IGFD::FileDialogConfig config { .flags = ImGuiFileDialogFlags_Modal };
@@ -1483,7 +1495,7 @@ void UContext::RenderMenuBar() {
 		if (ImGuiFileDialog::Instance()->IsOk()) {
 			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
 
-			if(mSelectedTab != nullptr) mSelectedTab->SaveModel(FilePath);
+			if(mSelectedTab != nullptr) mSelectedTab->SaveTab(FilePath);
 
 			mModelSelectSaveAs = false;
 		} else {
