@@ -231,8 +231,8 @@ namespace BIN {
         std::map<uint16_t, GraphNodeTrack> mAnimationTracks;
 
     public:
-        bool Playing() { return mPlaying; }
         void ResetTracks();
+        bool Playing() { return mPlaying; }
         void Play();
         void Pause();
         void Stop();

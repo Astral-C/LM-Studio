@@ -20,6 +20,8 @@ void LTrackCommon::LoadTrackEx(bStream::CStream* stream, uint32_t keyframeDataOf
         if(count == 1) {
             keyframe.value = KeyframeIO::ReadValue(stream, valueSize);
             keyframe.frame = 0;
+            mKeyFrames.push_back(keyframe);
+            continue;
         } else {
             if(valueSize == 2){
                 keyframe.frame = stream->readUInt16();
@@ -28,8 +30,6 @@ void LTrackCommon::LoadTrackEx(bStream::CStream* stream, uint32_t keyframeDataOf
             }
             keyframe.value = KeyframeIO::ReadValue(stream, valueSize);
         }
-
-
 
         if(hasSlopeIn && count > 1){
             keyframe.inslope = KeyframeIO::ReadValue(stream, valueSize); /// huh????

@@ -154,11 +154,11 @@ bool UViewerApplication::Teardown() {
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
+	delete mContext;
 
 	glfwDestroyWindow(mWindow);
 	glfwTerminate();
 
-	delete mContext;
 
 	return true;
 }

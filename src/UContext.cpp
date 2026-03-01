@@ -109,6 +109,7 @@ UModelEditContext::UModelEditContext(bStream::CStream* stream, EModelType type){
 UModelEditContext::UModelEditContext(bStream::CStream* stream){
     stream->seek(0);
     uint32_t magic = stream->readUInt32();
+    stream->seek(0);
     if(magic == 0x04B40000){
         mCurrentModelType = EModelType::Actor;
         mModelActor = std::make_unique<MDL::Model>();
@@ -414,8 +415,9 @@ void UModelEditContext::RenderModel(float dt){
        	mModelFurniture->Draw(&mvp, 0, false, mFurnitureAnimation.get());
         if(mFurnitureAnimation != nullptr &&  mFurnitureAnimation->Playing()) mFurnitureAnimation->Step(dt);
     } else if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
-       	mModelActor->Draw(&mvp, 0, false, nullptr, nullptr);
+       	mModelActor->Draw(&mvp, 0, false, nullptr, mActorSkeletalAnimation.get());
         mModelActor->mSkeletonRenderer.Draw(&mCamera);
+        if(mActorSkeletalAnimation != nullptr &&  mActorSkeletalAnimation->Playing()) mActorSkeletalAnimation->Step(dt);
     }
 
 }
@@ -432,6 +434,13 @@ void UModelEditContext::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
     if(mCurrentModelType == EModelType::Furniture && mModelFurniture != nullptr && SelectedType == SelectedResourceType::GraphNode){
         if(ImGuizmo::Manipulate(&mCamera.mView[0][0], &mCamera.mProjection[0][0], ImGuizmo::OPERATION::TRANSLATE | ImGuizmo::OPERATION::ROTATE | ImGuizmo::OPERATION::SCALE, ImGuizmo::LOCAL, &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Transform[0][0])){
             ImGuizmo::DecomposeMatrixToComponents(&static_cast<BIN::SceneGraphNode*>(SelectedResource)->Transform[0][0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Position[0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Rotation[0], &static_cast<BIN::SceneGraphNode*>(SelectedResource)->Scale[0]);
+            if(!mModelUnsaved) mModelUnsaved = true;
+        }
+    }
+
+    if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr && SelectedType == SelectedResourceType::GraphNode){
+        uint16_t skeletonId = std::distance(static_cast<MDL::SceneGraphNode*>(SelectedResource), &mModelActor->mGraphNodes[0]);
+        if(ImGuizmo::Manipulate(&mCamera.mView[0][0], &mCamera.mProjection[0][0], ImGuizmo::OPERATION::TRANSLATE | ImGuizmo::OPERATION::ROTATE | ImGuizmo::OPERATION::SCALE, ImGuizmo::LOCAL, &mModelActor->mSkeleton[3].Local[0][0])){
             if(!mModelUnsaved) mModelUnsaved = true;
         }
     }
@@ -491,7 +500,57 @@ void UModelEditContext::RenderTimeline(){
         if(mTimelineState.currentFrame != curFrame) mFurnitureAnimation->SetFrame(mTimelineState.currentFrame);
         ImTimeline::EndTimeline();
     }  else if(mCurrentModelType == EModelType::Actor && mActorSkeletalAnimation != nullptr){
-        ImGui::Text("Timeline Here");
+        if(ImGui::IsWindowHovered() && ImGui::IsKeyPressed(ImGuiKey_Space)){
+            if(mActorSkeletalAnimation->Playing()){
+                mActorSkeletalAnimation->Stop();
+            } else {
+                mActorSkeletalAnimation->Play();
+            }
+        }
+
+        mTimelineState.currentFrame = mActorSkeletalAnimation->GetFrame();
+
+        float curFrame = mTimelineState.currentFrame;
+
+        bool playing = mActorSkeletalAnimation->Playing();
+
+        ImTimeline::BeginTimeline(&mTimelineState, &playing);
+
+        if(playing && !mActorSkeletalAnimation->Playing()){
+            mActorSkeletalAnimation->Play();
+        } else if(!playing && mActorSkeletalAnimation->Playing()){
+            mActorSkeletalAnimation->Pause();
+        }
+
+        for(auto& track : mActorSkeletalAnimation->GetTracks()){
+            if(ImTimeline::RenderTrack(track.PositionX.mKeyFrames)){
+                std::sort(track.PositionX.mKeyFrames.begin(), track.PositionX.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+
+            if(ImTimeline::RenderTrack(track.PositionY.mKeyFrames)){
+                std::sort(track.PositionY.mKeyFrames.begin(), track.PositionY.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+
+            if(ImTimeline::RenderTrack(track.PositionZ.mKeyFrames)){
+                std::sort(track.PositionZ.mKeyFrames.begin(), track.PositionZ.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+
+            if(ImTimeline::RenderTrack(track.RotationX.mKeyFrames)){
+                std::sort(track.RotationX.mKeyFrames.begin(), track.RotationX.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+            if(ImTimeline::RenderTrack(track.RotationY.mKeyFrames)){
+                std::sort(track.RotationY.mKeyFrames.begin(), track.RotationY.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+            if(ImTimeline::RenderTrack(track.RotationZ.mKeyFrames)){
+                std::sort(track.RotationZ.mKeyFrames.begin(), track.RotationZ.mKeyFrames.end(), [](LKeyframeCommon k1, LKeyframeCommon k2){ return k1.frame > k2.frame; });
+            }
+
+            ImTimeline::RenderTrack(track.ScaleX.mKeyFrames);
+            ImTimeline::RenderTrack(track.ScaleY.mKeyFrames);
+            ImTimeline::RenderTrack(track.ScaleZ.mKeyFrames);
+        }
+        if(mTimelineState.currentFrame != curFrame) mActorSkeletalAnimation->SetFrame(mTimelineState.currentFrame);
+        ImTimeline::EndTimeline();
     }
 }
 

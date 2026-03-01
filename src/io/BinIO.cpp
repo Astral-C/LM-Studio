@@ -1392,17 +1392,6 @@ namespace BIN {
         }
     }
 
-    inline void FindFrameSet(float time, LTrackCommon& track, uint32_t& prevKeyframe, uint32_t& nextKeyframe){
-        for(int i = 0; i < track.mKeyFrames.size(); i++){
-            if(time >= track.mKeyFrames[i].frame){
-                prevKeyframe = i;
-                nextKeyframe = i+1;
-            } else if(time < track.mKeyFrames[i].frame){
-                break;
-            }
-        }
-    }
-
     void GraphNodeTrack::SetFrame(float frame){
         FindFrameSet(frame, mXPosTrack, mPreviousPosKeyX, mNextPosKeyX);
         FindFrameSet(frame, mYPosTrack, mPreviousPosKeyY, mNextPosKeyY);

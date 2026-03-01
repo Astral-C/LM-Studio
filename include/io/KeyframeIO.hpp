@@ -23,7 +23,7 @@ class LTrackCommon
 {
     ETrackType mType;
 public:
-    std::vector<LKeyframeCommon> mKeyFrames;
+    std::vector<LKeyframeCommon> mKeyFrames {};
 
     float GetFrame(uint32_t frame);
 
@@ -33,3 +33,14 @@ public:
     LTrackCommon(){}
     ~LTrackCommon(){}
 };
+
+inline void FindFrameSet(float time, LTrackCommon& track, uint32_t& prevKeyframe, uint32_t& nextKeyframe){
+    for(int i = 0; i < track.mKeyFrames.size(); i++){
+        if(time >= track.mKeyFrames[i].frame){
+            prevKeyframe = i;
+            nextKeyframe = i+1;
+        } else if(time < track.mKeyFrames[i].frame){
+            break;
+        }
+    }
+}

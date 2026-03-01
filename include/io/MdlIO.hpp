@@ -216,12 +216,28 @@ namespace MDL {
         uint32_t mNextRotKeyX { 1 };
         uint32_t mNextRotKeyY { 1 };
         uint32_t mNextRotKeyZ { 1 };
+
+        void SetFrame(float frame);
     };
 
-    struct AnimJoint {
+    struct TrackInfo {
         uint32_t BeginIndex;
         uint8_t Flags;
         uint8_t FrameCount;
+    };
+
+    struct AnimationGroup {
+        TrackInfo ScaleXInfo;
+        TrackInfo ScaleYInfo;
+        TrackInfo ScaleZInfo;
+
+        TrackInfo RotationXInfo;
+        TrackInfo RotationYInfo;
+        TrackInfo RotationZInfo;
+
+        TrackInfo PositionXInfo;
+        TrackInfo PositionYInfo;
+        TrackInfo PositionZInfo;
     };
 
     class Animation {
@@ -229,13 +245,28 @@ namespace MDL {
         float mTime { 0.0f };
         float mSpeed { 0.1f };
         float mEnd { 0.0f };
+        bool mPlaying { false };
 
     public:
         std::vector<JointTrack> mJointAnimations;
+
         void ResetTracks();
-        glm::mat4 GetJoint(glm::mat4 local, uint32_t id);
+
+        void SetFrame(float frame);
+        float GetFrame() { return mTime; }
+
+        std::vector<JointTrack>& GetTracks() { return mJointAnimations; }
+        glm::mat4 GetJoint(uint32_t id);
+
         void Load(bStream::CStream* stream);
-        void Step(float dt){ mTime += dt*10; if(mTime >= mEnd){ mTime = 0.0f; ResetTracks(); } }
+        void Step(float dt){ if(mPlaying) { mTime += dt*10; if(mTime >= mEnd){ mTime = 0.0f; ResetTracks(); } } }
+
+        bool Playing() { return mPlaying; }
+        void Play() { mPlaying = true; };
+        void Pause() { mPlaying = false; };
+        void Stop() { mPlaying = false; ResetTracks(); }
+
+
         Animation(){}
         ~Animation(){}
     };
