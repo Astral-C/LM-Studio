@@ -1,9 +1,12 @@
 #include "io/MdlIO.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#include "glm/matrix.hpp"
 #include "glm/trigonometric.hpp"
 #include "io/KeyframeIO.hpp"
+#include "io/Skeleton.hpp"
 #include "io/TxpIO.hpp"
 #include <Bti.hpp>
+#include <cstddef>
 #include <glad/glad.h>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -569,6 +572,7 @@ namespace MDL {
         mGraphNodes = ReadSection<SceneGraphNode>(stream, mHeader.SceneGraphOffset, mHeader.SceneGraphNodeCount);
 
         stream->seek(GenUtility::SwapEndian<uint32_t>(mHeader.PositionOffset));
+        mPositions.reserve(GenUtility::SwapEndian<uint16_t>(mHeader.PositionCount));
         for (std::size_t i = 0; i < GenUtility::SwapEndian<uint16_t>(mHeader.PositionCount); i++){
             mPositions.push_back({stream->readFloat(), stream->readFloat(), stream->readFloat()});
 
@@ -579,6 +583,11 @@ namespace MDL {
             bbMax.z = (mPositions.back().x > bbMax.x ? mPositions.back().x : bbMax.x);
             bbMax.y = (mPositions.back().y > bbMax.y ? mPositions.back().y : bbMax.y);
             bbMax.x = (mPositions.back().z > bbMax.z ? mPositions.back().z : bbMax.z);
+        }
+
+        mLodPositions.reserve((GenUtility::SwapEndian<uint16_t>(mHeader.NormalsOffset) - GenUtility::SwapEndian<uint16_t>(mHeader.PositionOffset)) / 12);
+        for(std::size_t i = 0; i < (GenUtility::SwapEndian<uint16_t>(mHeader.NormalsOffset) - GenUtility::SwapEndian<uint16_t>(mHeader.PositionOffset)) / 12; i++){
+            mLodPositions.push_back({stream->readFloat(), stream->readFloat(), stream->readFloat()});
         }
 
         stream->seek(GenUtility::SwapEndian<uint32_t>(mHeader.NormalsOffset));
@@ -597,7 +606,8 @@ namespace MDL {
         }
 
         mMatrixTable.resize(GenUtility::SwapEndian<uint16_t>(mHeader.JointCount) + GenUtility::SwapEndian<uint16_t>(mHeader.WeightCount));
-        mSkeleton.resize(mMatrixTable.size());
+        //mSkeleton.resize(mMatrixTable.size());
+        mRig = std::make_unique<Rig::Skeleton>(mMatrixTable.size());
         stream->seek(GenUtility::SwapEndian<uint32_t>(mHeader.InverseMatrixOffset));
         for (std::size_t i = 0; i < GenUtility::SwapEndian<uint16_t>(mHeader.JointCount); i++){
             mMatrixTable[i] = {
@@ -607,19 +617,14 @@ namespace MDL {
                     0,                                     0,                   0,                   1
             };
             mMatrixTable[i] = glm::inverseTranspose(mMatrixTable[i]);
-            mSkeleton[i].Model = mMatrixTable[i];
-            mSkeleton[i].InverseModel = glm::inverse(mMatrixTable[i]);
+            mRig->AddBone(mMatrixTable[i]);
+            //mSkeleton[i].Model = mMatrixTable[i];
+            //mSkeleton[i].InverseModel = glm::inverse(mMatrixTable[i]);
         }
 
         BuildScenegraphSkeleton(0, -1);
 
-        for(auto& bone : mSkeleton){ // Generate local matrices for each bone in the
-            if(bone.Parent != nullptr){
-                bone.Local = glm::inverse(bone.Parent->Transform()) * bone.Model;
-            } else {
-                bone.Local = glm::mat4(1.0f);
-            }
-        }
+        mRig->ToLocal();
 
         InitSkeletonRenderer(0, -1);
 
@@ -779,12 +784,9 @@ namespace MDL {
                             vtx.Weights[i] = weight.Weights[i];
                         }
                         vtx.Position = mPositions[vtxIndices.Position];
-                    } else if(vtxIndices.Matrix > -1 && vtxIndices.Matrix < GenUtility::SwapEndian<uint16_t>(mHeader.JointCount)) {
-                        glm::mat4 mtx = mMatrixTable[vtxIndices.Matrix];
-                        vtx.Position = glm::vec3(mtx * glm::vec4(mPositions[vtxIndices.Position], 1.0f));
+                    } else if(vtxIndices.Matrix != -1 && vtxIndices.Matrix < GenUtility::SwapEndian<uint16_t>(mHeader.JointCount)) {
                         vtx.BoneIndices[0] = vtxIndices.Matrix;
                         vtx.Weights[0] = 1.0f;
-
                     }
 
                     if(mHeader.NormalCount != 0) vtx.Normal = mNormals[vtxIndices.Normal];
@@ -832,9 +834,10 @@ namespace MDL {
     void Model::BuildScenegraphSkeleton(uint32_t index, uint32_t parentIndex){
         auto node = mGraphNodes[index];
 
-        mSkeleton[index].ParentIndex = parentIndex;
+        //mSkeleton[index].ParentIndex = parentIndex;
+        mRig->GetBone(index)->SetParentIndex(parentIndex);
         if(parentIndex != -1){
-            mSkeleton[index].Parent = &mSkeleton[parentIndex];
+            mRig->GetBone(index)->SetParent(mRig->GetBone(parentIndex));
         }
 
         if(node.ChildIndexShift > 0){
@@ -871,28 +874,16 @@ namespace MDL {
     }
 
     void Model::Draw(glm::mat4* transform, int32_t id, bool selected, TXP::Animation* materialAnimtion, Animation* skeletalAnimation){
+        std::vector<glm::mat4> skeleton = mRig->GetPose(skeletalAnimation);
 
-        std::vector<glm::mat4> skeleton(mSkeleton.size());
         mSkeletonRenderer.mPaths.clear();
         for(int i = 0; i < skeleton.size(); i++){
-            if(mSkeleton[i].ParentIndex != -1){
-                skeleton[i] = skeleton[mSkeleton[i].ParentIndex] * (skeletalAnimation != nullptr && i < skeletalAnimation->mJointAnimations.size() ? mSkeleton[i].Local * skeletalAnimation->GetJoint(i) : mSkeleton[i].Local);
-                mSkeletonRenderer.mPaths.push_back({
-                    { glm::vec3(skeleton[mSkeleton[i].ParentIndex][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 },
-                    { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 }
-                });
-            } else {
-                skeleton[i] = (skeletalAnimation != nullptr && i < skeletalAnimation->mJointAnimations.size() ? mSkeleton[i].Local * skeletalAnimation->GetJoint(i) : mSkeleton[i].Local);
                 mSkeletonRenderer.mPaths.push_back({
                     { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 },
                     { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 }
                 });
-            }
         }
         mSkeletonRenderer.UpdateData();
-        for(int i = 0; i < skeleton.size(); i++){
-            skeleton[i] = skeleton[i] * mSkeleton[i].InverseModel;
-        }
 
         glUseProgram(mProgram);
         glUniformMatrix4fv(glGetUniformLocation(mProgram, "transform"), 1, 0, &(*transform)[0][0]);
@@ -1000,9 +991,9 @@ namespace MDL {
         if(joint.ScaleY.mKeyFrames.size() > 0) scale.y = MixTrack(joint.ScaleY, mTime, joint.mPreviousScaleKeyY, joint.mNextScaleKeyY);
         if(joint.ScaleZ.mKeyFrames.size() > 0) scale.z = MixTrack(joint.ScaleZ, mTime, joint.mPreviousScaleKeyZ, joint.mNextScaleKeyZ);
 
-        if(joint.RotationX.mKeyFrames.size() > 0) rot.x = (MixTrack(joint.RotationX, mTime, joint.mPreviousRotKeyX, joint.mNextRotKeyZ));
-        if(joint.RotationY.mKeyFrames.size() > 0) rot.y = (MixTrack(joint.RotationY, mTime, joint.mPreviousRotKeyY, joint.mNextRotKeyY));
-        if(joint.RotationZ.mKeyFrames.size() > 0) rot.z = (MixTrack(joint.RotationZ, mTime, joint.mPreviousRotKeyZ, joint.mNextRotKeyZ));
+        if(joint.RotationX.mKeyFrames.size() > 0) rot.x = glm::radians(MixTrack(joint.RotationX, mTime, joint.mPreviousRotKeyX, joint.mNextRotKeyX));
+        if(joint.RotationY.mKeyFrames.size() > 0) rot.y = glm::radians(MixTrack(joint.RotationY, mTime, joint.mPreviousRotKeyY, joint.mNextRotKeyY));
+        if(joint.RotationZ.mKeyFrames.size() > 0) rot.z = glm::radians(MixTrack(joint.RotationZ, mTime, joint.mPreviousRotKeyZ, joint.mNextRotKeyZ));
 
         if(joint.PositionX.mKeyFrames.size() > 0) translation.x = MixTrack(joint.PositionX, mTime, joint.mPreviousPosKeyX, joint.mNextPosKeyX);
         if(joint.PositionY.mKeyFrames.size() > 0) translation.y = MixTrack(joint.PositionY, mTime, joint.mPreviousPosKeyY, joint.mNextPosKeyY);

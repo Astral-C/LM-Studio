@@ -2,10 +2,12 @@
 #include <io/Util.hpp>
 #include <glm/glm.hpp>
 #include <GenUtil.hpp>
+#include "io/Skeleton.hpp"
 #include "io/TxpIO.hpp"
 #include "KeyframeIO.hpp"
 #include "UPathRenderer.hpp"
 #include <glm/gtx/quaternion.hpp>
+#include <memory>
 
 namespace MDL {
 
@@ -288,6 +290,7 @@ namespace MDL {
         std::map<int, SceneGraphNode> mGraphNodes;
 
         std::vector<glm::vec3> mPositions;
+        std::vector<glm::vec3> mLodPositions;
         std::vector<glm::vec3> mNormals;
         std::vector<glm::vec2> mTexCoords;
         std::vector<glm::vec4> mColors;
@@ -295,6 +298,8 @@ namespace MDL {
         std::vector<glm::mat4> mMatrixTable;
         std::vector<Weight> mWeights;
         std::vector<Bone> mSkeleton;
+
+        std::unique_ptr<Rig::Skeleton> mRig;
 
         void BuildScenegraphSkeleton(uint32_t index, uint32_t parentIndex);
         void InitSkeletonRenderer(uint32_t index, uint32_t parentIndex);
