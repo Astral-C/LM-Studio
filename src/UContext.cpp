@@ -440,9 +440,6 @@ void UModelEditContext::RenderGizmos(ImVec2 viewportPos, ImVec2 viewportSize){
 
     if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr && SelectedType == SelectedResourceType::GraphNode){
         uint16_t skeletonId = std::distance(static_cast<MDL::SceneGraphNode*>(SelectedResource), &mModelActor->mGraphNodes[0]);
-        if(ImGuizmo::Manipulate(&mCamera.mView[0][0], &mCamera.mProjection[0][0], ImGuizmo::OPERATION::TRANSLATE | ImGuizmo::OPERATION::ROTATE | ImGuizmo::OPERATION::SCALE, ImGuizmo::LOCAL, &mModelActor->mSkeleton[3].Local[0][0])){
-            if(!mModelUnsaved) mModelUnsaved = true;
-        }
     }
 }
 
@@ -1349,6 +1346,7 @@ void UContext::Render(float deltaTime) {
 			//assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
 			for(auto tab : mTabs){
+			    if(tab->GetCamera() == nullptr) continue;
 			    tab->GetCamera()->UpdateSize(winSize);
 			}
 

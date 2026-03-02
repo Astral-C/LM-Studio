@@ -617,14 +617,14 @@ namespace MDL {
                     0,                                     0,                   0,                   1
             };
             mMatrixTable[i] = glm::inverseTranspose(mMatrixTable[i]);
-            mRig->AddBone(mMatrixTable[i]);
+            mRig->AddBone(mMatrixTable[i], glm::inverse(mMatrixTable[i]));
             //mSkeleton[i].Model = mMatrixTable[i];
             //mSkeleton[i].InverseModel = glm::inverse(mMatrixTable[i]);
         }
 
         BuildScenegraphSkeleton(0, -1);
 
-        mRig->ToLocal();
+        mRig->RestPose();
 
         InitSkeletonRenderer(0, -1);
 
@@ -785,6 +785,7 @@ namespace MDL {
                         }
                         vtx.Position = mPositions[vtxIndices.Position];
                     } else if(vtxIndices.Matrix != -1 && vtxIndices.Matrix < GenUtility::SwapEndian<uint16_t>(mHeader.JointCount)) {
+                        vtx.Position = mPositions[vtxIndices.Position];
                         vtx.BoneIndices[0] = vtxIndices.Matrix;
                         vtx.Weights[0] = 1.0f;
                     }

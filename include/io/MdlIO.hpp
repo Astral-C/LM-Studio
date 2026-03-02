@@ -297,7 +297,6 @@ namespace MDL {
 
         std::vector<glm::mat4> mMatrixTable;
         std::vector<Weight> mWeights;
-        std::vector<Bone> mSkeleton;
 
         std::unique_ptr<Rig::Skeleton> mRig;
 
