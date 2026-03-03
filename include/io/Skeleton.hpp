@@ -11,14 +11,14 @@ namespace MDL { class Animation; }
 
 namespace Rig {
 
-class Bone {
+class Bone : public std::enable_shared_from_this<Bone> {
     int16_t mParentIndex { -1 };
     std::shared_ptr<Bone> mParent { nullptr };
     glm::mat4 mModel { 1.0f }, mInverse { 1.0f }, mLocal { 1.0f }, mAnimationFrame { 1.0f };
 
 public:
-    void Model(glm::mat4 matrix) { mModel = matrix; }
-    glm::mat4 Model() { return mModel; }
+    void Matrix(glm::mat4 matrix) { mModel = matrix; }
+    glm::mat4 Matrix() { return mModel; }
 
     void Inverse(glm::mat4 matrix) { mInverse = matrix; }
     glm::mat4 Inverse() { return mInverse; }
@@ -29,7 +29,7 @@ public:
     void Frame(glm::mat4 matrix) { mAnimationFrame = matrix; }
     glm::mat4 Frame() { return mAnimationFrame; }
 
-    glm::mat4 Transform() { return mParentIndex != -1 ? mParent->Transform() * mLocal * mAnimationFrame : mLocal; }
+    glm::mat4 Transform();
 
     Bone();
     Bone(glm::mat4 matrix, glm::mat4 inverse);
@@ -60,16 +60,10 @@ public:
     void AddBone(glm::mat4 matrix, glm::mat4 inverse);
 
     void WorldToLocal();
-    void WorldToLocal(std::shared_ptr<Bone> bone);
 
     void RestPose();
 
     std::vector<glm::mat4>& GetPose(MDL::Animation* anim);
-
-    glm::mat4 GetBoneTransform(int index);
-    glm::mat4 GetBoneTransform(std::shared_ptr<Bone> bone);
-
-    glm::mat4 GetWorld(std::size_t bone);
 
     std::shared_ptr<Bone> GetBone(int index) { return mBones[index]; }
 

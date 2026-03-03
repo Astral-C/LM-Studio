@@ -269,7 +269,7 @@ namespace MDL {
                 if(inJoints[i] == -1){\n\
                     break;\n\
                 }\n\
-                pos += (joints[inJoints[i]] * vec4(inPosition.x, inPosition.y, inPosition.z, 1.0)) * inWeights[i];\n\
+                pos += (joints[inJoints[i]] * inWeights[i]) * vec4(inPosition.x, inPosition.y, inPosition.z, 1.0);\n\
             }\n\
             if(inJoints[0] == -1){\n\
                 pos = vec4(inPosition.x, inPosition.y, inPosition.z, 1.0);\n\
@@ -618,13 +618,11 @@ namespace MDL {
             };
             mMatrixTable[i] = glm::inverseTranspose(mMatrixTable[i]);
             mRig->AddBone(mMatrixTable[i], glm::inverse(mMatrixTable[i]));
-            //mSkeleton[i].Model = mMatrixTable[i];
-            //mSkeleton[i].InverseModel = glm::inverse(mMatrixTable[i]);
         }
 
         BuildScenegraphSkeleton(0, -1);
 
-        mRig->RestPose();
+        mRig->WorldToLocal();
 
         InitSkeletonRenderer(0, -1);
 
