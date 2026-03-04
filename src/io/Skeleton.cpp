@@ -1,7 +1,9 @@
 #include "io/Skeleton.hpp"
 #include "glm/ext/quaternion_common.hpp"
+#include "glm/ext/vector_float4.hpp"
 #include "glm/gtc/quaternion.hpp"
 #include "glm/gtx/matrix_decompose.hpp"
+#include "glm/gtx/matrix_interpolation.hpp"
 #include "io/MdlIO.hpp"
 #include <memory>
 
@@ -9,61 +11,77 @@ namespace Rig {
 
 Bone::Bone(){}
 
-Bone::Bone(glm::mat4 matrix, glm::mat4 inverse){
-    mModel = matrix;
-    mInverse = inverse;
-}
-
 Bone::~Bone(){}
-
-glm::mat4 Bone::Transform(){
-    glm::mat4 transform(1.0f);
-    std::shared_ptr<Bone> bone = shared_from_this();
-
-    while(bone != nullptr){
-        transform = bone->Local() * transform;
-        bone = bone->mParent;
-    }
-
-    return transform;
-}
 
 Skeleton::Skeleton(){}
 
 Skeleton::Skeleton(std::size_t boneCount){
     mBones.reserve(boneCount);
-    mPose.resize(boneCount);
 }
 
 Skeleton::~Skeleton(){}
 
-void Skeleton::AddBone(glm::mat4 matrix, glm::mat4 inverse){
-    mBones.push_back(std::make_shared<Bone>(matrix, inverse));
-}
+void Skeleton::Reset(){
+    for(auto& bone : mBones){
+        bone->mAnimationState = BoneAnimationState();
+        bone->mAnimationState.mPosition = bone->mPosition;
+        bone->mAnimationState.mRotation = bone->mRotation;
+        bone->mAnimationState.mScale = bone->mScale;
+    }
 
-void Skeleton::WorldToLocal(){
-    for(std::size_t i = 0; i < mBones.size(); i++){
-        if(mBones[i]->GetParentIndex() != -1){
-            mBones[i]->Local(glm::inverse(mBones[i]->GetParent()->Matrix()) * mBones[i]->Matrix());
-        } else {
-            mBones[i]->Local(mBones[i]->Matrix());
-        }
+    Update();
+
+    for(auto& bone : mBones){
+        bone->mInverse = glm::inverse(bone->mTransform);
     }
 }
 
-std::vector<glm::mat4>& Skeleton::GetPose(MDL::Animation* anim){
-    if(anim != nullptr){
-        for(int i = 0; i < mBones.size(); i++){
-            mBones[i]->Frame(anim->GetJoint(i));
-        }
+void Skeleton::Update(){
+    Updated = true;
+    for(auto& bone : mBones){
+        bone->mTransform = GetWorldMatrix(bone);
     }
+}
 
-    for(std::size_t i = 0; i < mBones.size(); i++){
-        mPose[i] = (mBones[i]->Matrix() * mBones[i]->Frame()) * mBones[i]->Inverse();
+glm::mat4 Skeleton::GetWorldMatrix(std::shared_ptr<Bone> bone){
+    glm::mat4 transform(1.0f);
+    transform = glm::scale(transform, bone->mAnimationState.mScale);
+    transform *= glm::toMat4(bone->mAnimationState.mRotation);
+    transform = glm::translate(transform, bone->mAnimationState.mPosition);
+
+    if(bone->ParentIndex != -1){
+        return transform * GetWorldMatrix(bone->mParent);
+    } else {
+        return transform;
     }
+}
 
-    return mPose;
+void Skeleton::ConvertWorldToLocalSpace(){
+    for(auto& bone : mBones){
+        ConvertWorldToLocalSpace(bone);
+    }
+    Reset();
+}
 
+void Skeleton::ConvertWorldToLocalSpace(std::shared_ptr<Bone> bone){
+    if(bone->ParentIndex != -1){
+        glm::mat4 mat = glm::inverse(GetBoneTransform(bone->mParent));
+        bone->mPosition = glm::vec3(mat * glm::vec4(bone->mPosition, 1));
+        bone->mRotation = glm::quat_cast(glm::extractMatrixRotation(mat)) * bone->mRotation;
+
+    }
+}
+
+
+glm::mat4 Skeleton::GetBoneTransform(std::shared_ptr<Bone> bone){
+    if(bone == nullptr){
+        return glm::mat4(1.0f);
+    }
+    if(bone->ParentIndex == -1){
+        return bone->GetTransform();
+    } else {
+        return bone->GetTransform() * GetBoneTransform(mBones[bone->ParentIndex]);
+    }
 }
 
 }

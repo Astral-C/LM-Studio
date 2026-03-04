@@ -155,23 +155,6 @@ namespace MDL {
         void Destroy();
     };
 
-    struct Bone {
-        int32_t ParentIndex { -1 };
-        Bone* Parent { nullptr };
-        glm::mat4 Model { 1.0f };
-        glm::mat4 Local { 1.0f };
-        glm::mat4 InverseModel { 1.0f };
-
-        glm::mat4 Transform(){
-            if(Parent == nullptr){
-                return Local;
-            } else {
-                return Parent->Transform() * Local;
-            }
-        }
-
-    };
-
     struct Weight {
         std::vector<uint32_t> JointIndices;
         std::vector<float> Weights;
@@ -258,7 +241,7 @@ namespace MDL {
         float GetFrame() { return mTime; }
 
         std::vector<JointTrack>& GetTracks() { return mJointAnimations; }
-        glm::mat4 GetJoint(uint32_t id);
+        void GetJoint(uint32_t id, std::shared_ptr<Rig::Bone> bone);
 
         void Load(bStream::CStream* stream);
         void Step(float dt){ if(mPlaying) { mTime += dt*10; if(mTime >= mEnd){ mTime = 0.0f; ResetTracks(); } } }

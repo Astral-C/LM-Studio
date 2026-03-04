@@ -1,5 +1,8 @@
 #include "io/MdlIO.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#include "glm/fwd.hpp"
+#include "glm/gtc/quaternion.hpp"
+#include "glm/gtx/matrix_decompose.hpp"
 #include "glm/matrix.hpp"
 #include "glm/trigonometric.hpp"
 #include "io/KeyframeIO.hpp"
@@ -13,6 +16,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <format>
 #include <array>
+#include <memory>
 
 static float angle = 0.0f;
 
@@ -264,17 +268,17 @@ namespace MDL {
         \
         void main()\n\
         {\
-            vec4 pos = vec4(0.0);\n\
+            mat4 weightedJoint = mat4(0.0);\n\
             for(int i = 0; i < 4; i++){\n\
                 if(inJoints[i] == -1){\n\
                     break;\n\
                 }\n\
-                pos += (joints[inJoints[i]] * inWeights[i]) * vec4(inPosition.x, inPosition.y, inPosition.z, 1.0);\n\
+                weightedJoint += joints[inJoints[i]] * inWeights[i];\n\
             }\n\
             if(inJoints[0] == -1){\n\
-                pos = vec4(inPosition.x, inPosition.y, inPosition.z, 1.0);\n\
+                weightedJoint = mat4(1.0);\n\
             }\n\
-            gl_Position = transform * vec4(pos.x, pos.y, pos.z, 1.0);\n\
+            gl_Position = transform * weightedJoint * vec4(inPosition, 1.0);\n\
             fragTexCoord = inTexCoord;\n\
             fragColor = inColor;\n\
         }\
@@ -617,12 +621,22 @@ namespace MDL {
                     0,                                     0,                   0,                   1
             };
             mMatrixTable[i] = glm::inverseTranspose(mMatrixTable[i]);
-            mRig->AddBone(mMatrixTable[i], glm::inverse(mMatrixTable[i]));
+
+            auto bone = std::make_shared<Rig::Bone>();
+
+            glm::vec3 skew;
+            glm::vec4 persp;
+            glm::decompose(mMatrixTable[i], bone->mScale, bone->mRotation, bone->mPosition, skew, persp);
+
+            mRig->mBones.push_back(bone);
+
         }
 
         BuildScenegraphSkeleton(0, -1);
 
-        mRig->WorldToLocal();
+        mRig->ConvertWorldToLocalSpace();
+        mRig->Reset();
+        mRig->Update();
 
         InitSkeletonRenderer(0, -1);
 
@@ -782,8 +796,8 @@ namespace MDL {
                             vtx.Weights[i] = weight.Weights[i];
                         }
                         vtx.Position = mPositions[vtxIndices.Position];
-                    } else if(vtxIndices.Matrix != -1 && vtxIndices.Matrix < GenUtility::SwapEndian<uint16_t>(mHeader.JointCount)) {
-                        vtx.Position = mPositions[vtxIndices.Position];
+                    } else if(vtxIndices.Matrix > 0 && vtxIndices.Matrix < GenUtility::SwapEndian<uint16_t>(mHeader.JointCount)) {
+                        vtx.Position = mMatrixTable[vtxIndices.Matrix] * glm::vec4(mPositions[vtxIndices.Position], 1.0f);
                         vtx.BoneIndices[0] = vtxIndices.Matrix;
                         vtx.Weights[0] = 1.0f;
                     }
@@ -834,9 +848,9 @@ namespace MDL {
         auto node = mGraphNodes[index];
 
         //mSkeleton[index].ParentIndex = parentIndex;
-        mRig->GetBone(index)->SetParentIndex(parentIndex);
+        mRig->mBones[index]->ParentIndex = parentIndex;
         if(parentIndex != -1){
-            mRig->GetBone(index)->SetParent(mRig->GetBone(parentIndex));
+            mRig->mBones[index]->mParent = mRig->mBones[parentIndex];
         }
 
         if(node.ChildIndexShift > 0){
@@ -873,14 +887,33 @@ namespace MDL {
     }
 
     void Model::Draw(glm::mat4* transform, int32_t id, bool selected, TXP::Animation* materialAnimtion, Animation* skeletalAnimation){
-        std::vector<glm::mat4> skeleton = mRig->GetPose(skeletalAnimation);
+        std::vector<glm::mat4> skeleton;
+        skeleton.reserve(mRig->mBones.size());
+
+        if(skeletalAnimation != nullptr){
+            for (std::size_t i = 0; i < mRig->mBones.size(); i++){
+                skeletalAnimation->GetJoint(i, mRig->mBones[i]);
+            }
+
+            mRig->Update();
+        }
+
+
+        for (auto& bone : mRig->mBones) skeleton.push_back(bone->mInverse * bone->mTransform);
 
         mSkeletonRenderer.mPaths.clear();
         for(int i = 0; i < skeleton.size(); i++){
-                mSkeletonRenderer.mPaths.push_back({
-                    { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 },
-                    { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 }
-                });
+                if(mRig->mBones[i]->ParentIndex != -1){
+                    mSkeletonRenderer.mPaths.push_back({
+                        { glm::vec3(skeleton[mRig->mBones[i]->ParentIndex][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 },
+                        { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 }
+                    });
+                } else {
+                    mSkeletonRenderer.mPaths.push_back({
+                        { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 },
+                        { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 }
+                    });
+                }
         }
         mSkeletonRenderer.UpdateData();
 
@@ -979,37 +1012,29 @@ namespace MDL {
 
     }
 
-    glm::mat4 Animation::GetJoint(uint32_t id){
-        if(id > mJointAnimations.size()) return glm::mat4(1.0f);
+    void Animation::GetJoint(uint32_t id, std::shared_ptr<Rig::Bone> bone){
+        if(id > mJointAnimations.size()) return;
 
         JointTrack& joint = mJointAnimations[id];
 
-        glm::vec3 translation { 0, 0, 0 }, scale { 1, 1, 1 }, rot { 0, 0, 0 };
+        glm::vec3 position = bone->mPosition, scale = bone->mScale, rotation = glm::eulerAngles(bone->mRotation);
 
         if(joint.ScaleX.mKeyFrames.size() > 0) scale.x = MixTrack(joint.ScaleX, mTime, joint.mPreviousScaleKeyX, joint.mNextScaleKeyX);
         if(joint.ScaleY.mKeyFrames.size() > 0) scale.y = MixTrack(joint.ScaleY, mTime, joint.mPreviousScaleKeyY, joint.mNextScaleKeyY);
         if(joint.ScaleZ.mKeyFrames.size() > 0) scale.z = MixTrack(joint.ScaleZ, mTime, joint.mPreviousScaleKeyZ, joint.mNextScaleKeyZ);
 
-        if(joint.RotationX.mKeyFrames.size() > 0) rot.x = glm::radians(MixTrack(joint.RotationX, mTime, joint.mPreviousRotKeyX, joint.mNextRotKeyX));
-        if(joint.RotationY.mKeyFrames.size() > 0) rot.y = glm::radians(MixTrack(joint.RotationY, mTime, joint.mPreviousRotKeyY, joint.mNextRotKeyY));
-        if(joint.RotationZ.mKeyFrames.size() > 0) rot.z = glm::radians(MixTrack(joint.RotationZ, mTime, joint.mPreviousRotKeyZ, joint.mNextRotKeyZ));
+        if(joint.RotationX.mKeyFrames.size() > 0) rotation.x = glm::radians(MixTrack(joint.RotationX, mTime, joint.mPreviousRotKeyX, joint.mNextRotKeyX));
+        if(joint.RotationY.mKeyFrames.size() > 0) rotation.y = glm::radians(MixTrack(joint.RotationY, mTime, joint.mPreviousRotKeyY, joint.mNextRotKeyY));
+        if(joint.RotationZ.mKeyFrames.size() > 0) rotation.z = glm::radians(MixTrack(joint.RotationZ, mTime, joint.mPreviousRotKeyZ, joint.mNextRotKeyZ));
 
-        if(joint.PositionX.mKeyFrames.size() > 0) translation.x = MixTrack(joint.PositionX, mTime, joint.mPreviousPosKeyX, joint.mNextPosKeyX);
-        if(joint.PositionY.mKeyFrames.size() > 0) translation.y = MixTrack(joint.PositionY, mTime, joint.mPreviousPosKeyY, joint.mNextPosKeyY);
-        if(joint.PositionZ.mKeyFrames.size() > 0) translation.z = MixTrack(joint.PositionZ, mTime, joint.mPreviousPosKeyZ, joint.mNextPosKeyZ);
+        if(joint.PositionX.mKeyFrames.size() > 0) position.x = MixTrack(joint.PositionX, mTime, joint.mPreviousPosKeyX, joint.mNextPosKeyX);
+        if(joint.PositionY.mKeyFrames.size() > 0) position.y = MixTrack(joint.PositionY, mTime, joint.mPreviousPosKeyY, joint.mNextPosKeyY);
+        if(joint.PositionZ.mKeyFrames.size() > 0) position.z = MixTrack(joint.PositionZ, mTime, joint.mPreviousPosKeyZ, joint.mNextPosKeyZ);
 
-        glm::mat4 keyframe(1.0f);
-        keyframe = glm::scale(keyframe, scale);
-        keyframe = glm::rotate(keyframe, rot.x, glm::vec3(1,0,0));
-        keyframe = glm::rotate(keyframe, rot.y, glm::vec3(0,1,0));
-        keyframe = glm::rotate(keyframe, rot.z, glm::vec3(0,0,1));
-        keyframe = glm::translate(keyframe, translation);
+        bone->mAnimationState.mPosition = position;
+        bone->mAnimationState.mRotation = glm::quat(rotation);
+        bone->mAnimationState.mScale = scale;
 
-        std::cout << "[Joint " <<  id << " Translate]: " << translation.x << ", " << translation.y << ", " << translation.z << std::endl;
-        std::cout << "[Joint " <<  id << " Rotate   ]: " << glm::degrees(rot.x) << ", " << glm::degrees(rot.y) << ", " << glm::degrees(rot.z) << std::endl;
-        std::cout << "[Joint " <<  id << " Scale    ]: " << scale.x << ", " << scale.y << ", " << scale.z << std::endl;
-
-        return keyframe;
     }
 
     void Animation::Load(bStream::CStream* stream){

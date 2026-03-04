@@ -6,66 +6,64 @@
 #include "glm/fwd.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/quaternion.hpp"
+#include "glm/gtx/quaternion.hpp"
+#include "glm/gtx/euler_angles.hpp"
 
 namespace MDL { class Animation; }
 
 namespace Rig {
 
+struct BoneAnimationState {
+    glm::vec3 mPosition { 0.0f }, mScale { 1.0f };
+    glm::quat mRotation { glm::identity<glm::quat>() };
+};
+
 class Bone : public std::enable_shared_from_this<Bone> {
-    int16_t mParentIndex { -1 };
-    std::shared_ptr<Bone> mParent { nullptr };
-    glm::mat4 mModel { 1.0f }, mInverse { 1.0f }, mLocal { 1.0f }, mAnimationFrame { 1.0f };
-
 public:
-    void Matrix(glm::mat4 matrix) { mModel = matrix; }
-    glm::mat4 Matrix() { return mModel; }
+    glm::mat4 mTransform, mInverse;
 
-    void Inverse(glm::mat4 matrix) { mInverse = matrix; }
-    glm::mat4 Inverse() { return mInverse; }
+    glm::vec3 mPosition { 0.0f }, mScale { 1.0f };
+    glm::quat mRotation { glm::identity<glm::quat>() };
 
-    glm::mat4 Local(){ return mLocal; }
-    void Local(glm::mat4 matrix){ mLocal = matrix; }
+    std::shared_ptr<Bone> mParent;
+    std::vector<std::shared_ptr<Bone>> mChildren;
 
-    void Frame(glm::mat4 matrix) { mAnimationFrame = matrix; }
-    glm::mat4 Frame() { return mAnimationFrame; }
+    int ParentIndex;
 
-    glm::mat4 Transform();
+    BoneAnimationState mAnimationState;
+
+
+    glm::mat4 GetTransform() {
+        glm::mat4 transform(1.0f);
+        transform = glm::scale(transform, mScale);
+        transform *= glm::toMat4(mRotation);
+        transform = glm::translate(transform, mPosition);
+        return transform;
+    }
+
+    void EulerRotation(glm::vec3 v) { mRotation = glm::toQuat(glm::orientate4(v)); }
+    glm::vec3 EulerRotation() { return glm::eulerAngles(mRotation); }
 
     Bone();
-    Bone(glm::mat4 matrix, glm::mat4 inverse);
-
-    void SetParent(std::shared_ptr<Bone> bone){
-        mParent = bone;
-    }
-
-    void SetParentIndex(int16_t index){
-        mParentIndex = index;
-    }
-
-    std::shared_ptr<Bone> GetParent() {
-        return mParent;
-    }
-
-    int16_t GetParentIndex(){
-        return mParentIndex;
-    }
-
     ~Bone();
 };
 
 class Skeleton {
     std::vector<glm::mat4> mPose;
-    std::vector<std::shared_ptr<Bone>> mBones;
+    bool Updated { false };
+
+    glm::mat4 GetWorldMatrix(std::shared_ptr<Bone> bone);
+    void ConvertWorldToLocalSpace(std::shared_ptr<Bone> bone);
 public:
-    void AddBone(glm::mat4 matrix, glm::mat4 inverse);
+    std::vector<std::shared_ptr<Bone>> mBones;
 
-    void WorldToLocal();
+    void Reset();
+    void Update();
 
-    void RestPose();
+    void ConvertWorldToLocalSpace();
 
-    std::vector<glm::mat4>& GetPose(MDL::Animation* anim);
-
-    std::shared_ptr<Bone> GetBone(int index) { return mBones[index]; }
+    glm::mat4 GetBoneTransform(std::shared_ptr<Bone> bone);
+    glm::mat4 GetBoneTransform(int index) { return GetBoneTransform(mBones[index]); }
 
     Skeleton();
     Skeleton(std::size_t boneCount);
