@@ -23,7 +23,6 @@ Skeleton::~Skeleton(){}
 
 void Skeleton::Reset(){
     for(auto& bone : mBones){
-        bone->mAnimationState = BoneAnimationState();
         bone->mAnimationState.mPosition = bone->mPosition;
         bone->mAnimationState.mRotation = bone->mRotation;
         bone->mAnimationState.mScale = bone->mScale;
@@ -65,10 +64,10 @@ void Skeleton::ConvertWorldToLocalSpace(){
 
 void Skeleton::ConvertWorldToLocalSpace(std::shared_ptr<Bone> bone){
     if(bone->ParentIndex != -1){
-        glm::mat4 mat = glm::inverse(GetBoneTransform(bone->mParent));
-        bone->mPosition = glm::vec3(mat * glm::vec4(bone->mPosition, 1));
-        bone->mRotation = glm::quat_cast(glm::extractMatrixRotation(mat)) * bone->mRotation;
-
+        glm::mat4 mat = bone->GetTransform() * glm::inverse(GetBoneTransform(bone->mParent));
+        glm::vec3 skew;
+        glm::vec4 persp;
+        glm::decompose(mat, bone->mScale, bone->mRotation, bone->mPosition, skew, persp);
     }
 }
 

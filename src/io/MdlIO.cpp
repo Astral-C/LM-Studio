@@ -638,8 +638,6 @@ namespace MDL {
         mRig->Reset();
         mRig->Update();
 
-        InitSkeletonRenderer(0, -1);
-
         // This whole section of the code is broken I think, but it isn't needed unless skinning gets added
 
         mWeights.reserve(GenUtility::SwapEndian<uint16_t>(mHeader.WeightCount));
@@ -894,7 +892,6 @@ namespace MDL {
             for (std::size_t i = 0; i < mRig->mBones.size(); i++){
                 skeletalAnimation->GetJoint(i, mRig->mBones[i]);
             }
-
             mRig->Update();
         }
 
@@ -905,13 +902,13 @@ namespace MDL {
         for(int i = 0; i < skeleton.size(); i++){
                 if(mRig->mBones[i]->ParentIndex != -1){
                     mSkeletonRenderer.mPaths.push_back({
-                        { glm::vec3(skeleton[mRig->mBones[i]->ParentIndex][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 },
-                        { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 }
+                        { glm::vec3(skeleton[mRig->mBones[i]->ParentIndex][3]), {0x00, 0xAA, 0xAA, 0xFF}, 6400, -1 },
+                        { glm::vec3(skeleton[i][3]), {0x00, 0x00, 0xFF, 0xFF}, 6400, -1 }
                     });
                 } else {
                     mSkeletonRenderer.mPaths.push_back({
-                        { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 },
-                        { glm::vec3(skeleton[i][3]), {0xFF, 0x00, 0xFF, 0xFF}, 6400, -1 }
+                        { glm::vec3(skeleton[i][3]), {0xFF, 0xFF, 0xFF, 0xFF}, 6400, -1 },
+                        { glm::vec3(skeleton[i][3]), {0x00, 0x00, 0x00, 0xFF}, 6400, -1 }
                     });
                 }
         }
