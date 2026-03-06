@@ -1,9 +1,4 @@
 #include "io/MdlIO.hpp"
-#include "glm/ext/matrix_transform.hpp"
-#include "glm/fwd.hpp"
-#include "glm/gtc/quaternion.hpp"
-#include "glm/gtx/matrix_decompose.hpp"
-#include "glm/matrix.hpp"
 #include "glm/trigonometric.hpp"
 #include "io/KeyframeIO.hpp"
 #include "io/Skeleton.hpp"
@@ -11,8 +6,11 @@
 #include <Bti.hpp>
 #include <cstddef>
 #include <glad/glad.h>
+#include <glm/matrix.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtx/matrix_major_storage.hpp>
+#include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <format>
 #include <array>
@@ -715,6 +713,7 @@ namespace MDL {
 
                         vtx.Position = stream->readInt16();
                         pvtx.Position = mPositions[vtx.Position];
+                        pvtx.Position = {pvtx.Position.x, pvtx.Position.z, -pvtx.Position.y};
 
                         if(GenUtility::SwapEndian<uint16_t>(mHeader.NormalCount) > 0){
                             vtx.Normal = stream->readInt16();
@@ -1029,7 +1028,7 @@ namespace MDL {
         if(joint.PositionZ.mKeyFrames.size() > 0) position.z = MixTrack(joint.PositionZ, mTime, joint.mPreviousPosKeyZ, joint.mNextPosKeyZ);
 
         bone->mAnimationState.mPosition = position;
-        bone->mAnimationState.mRotation = glm::quat(rotation);
+        bone->mAnimationState.mRotation = glm::quat(glm::eulerAngleXYZ(rotation.x, rotation.y, rotation.z));
         bone->mAnimationState.mScale = scale;
 
     }
