@@ -244,6 +244,7 @@ namespace MDL {
         void GetJoint(uint32_t id, std::shared_ptr<Rig::Bone> bone);
 
         void Load(bStream::CStream* stream);
+        void LoadYAML(std::filesystem::path path);
         void Step(float dt){ if(mPlaying) { mTime += dt*10; if(mTime >= mEnd){ mTime = 0.0f; ResetTracks(); } } }
 
         bool Playing() { return mPlaying; }

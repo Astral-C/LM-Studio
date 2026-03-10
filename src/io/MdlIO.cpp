@@ -1,20 +1,29 @@
 #include "io/MdlIO.hpp"
-#include "glm/trigonometric.hpp"
 #include "io/KeyframeIO.hpp"
 #include "io/Skeleton.hpp"
 #include "io/TxpIO.hpp"
+
+#include "node.hpp"
 #include <Bti.hpp>
 #include <cstddef>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <glad/glad.h>
 #include <glm/matrix.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/matrix_major_storage.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/trigonometric.hpp>
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <format>
 #include <array>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <ranges>
 
 static float angle = 0.0f;
 
@@ -622,9 +631,10 @@ namespace MDL {
 
             auto bone = std::make_shared<Rig::Bone>();
 
-            glm::vec3 skew;
-            glm::vec4 persp;
-            glm::decompose(mMatrixTable[i], bone->mScale, bone->mRotation, bone->mPosition, skew, persp);
+            bone->mTransform = mMatrixTable[i];
+            //glm::vec3 skew;
+            //glm::vec4 persp;
+            //glm::decompose(mMatrixTable[i], bone->mScale, bone->mRotation, bone->mPosition, skew, persp);
 
             mRig->mBones.push_back(bone);
 
@@ -895,7 +905,7 @@ namespace MDL {
         }
 
 
-        for (auto& bone : mRig->mBones) skeleton.push_back(bone->mInverse * bone->mTransform);
+        for (auto& bone : mRig->mBones) skeleton.push_back(bone->mTransform * bone->mInverse);
 
         mSkeletonRenderer.mPaths.clear();
         for(int i = 0; i < skeleton.size(); i++){
@@ -1013,7 +1023,7 @@ namespace MDL {
 
         JointTrack& joint = mJointAnimations[id];
 
-        glm::vec3 position = bone->mPosition, scale = bone->mScale, rotation = glm::eulerAngles(bone->mRotation);
+        glm::vec3 position = glm::vec3(0.0f), scale = glm::vec3(1.0f), rotation = glm::vec3(0.0f);
 
         if(joint.ScaleX.mKeyFrames.size() > 0) scale.x = MixTrack(joint.ScaleX, mTime, joint.mPreviousScaleKeyX, joint.mNextScaleKeyX);
         if(joint.ScaleY.mKeyFrames.size() > 0) scale.y = MixTrack(joint.ScaleY, mTime, joint.mPreviousScaleKeyY, joint.mNextScaleKeyY);
@@ -1027,10 +1037,69 @@ namespace MDL {
         if(joint.PositionY.mKeyFrames.size() > 0) position.y = MixTrack(joint.PositionY, mTime, joint.mPreviousPosKeyY, joint.mNextPosKeyY);
         if(joint.PositionZ.mKeyFrames.size() > 0) position.z = MixTrack(joint.PositionZ, mTime, joint.mPreviousPosKeyZ, joint.mNextPosKeyZ);
 
-        bone->mAnimationState.mPosition = position;
-        bone->mAnimationState.mRotation = glm::quat(glm::eulerAngleXYZ(rotation.x, rotation.y, rotation.z));
-        bone->mAnimationState.mScale = scale;
+        bone->mAnimation = glm::scale(scale) * glm::eulerAngleXYZ(rotation.z, rotation.y, rotation.x) * glm::translate(position);
+    }
 
+    LKeyframeCommon GetFrameFromYAML(fkyaml::node frameNode){
+        LKeyframeCommon frame;
+
+        if(frameNode.size() > 0) frame.frame = frameNode.at(0).get_value_or<int>(0);
+        if(frameNode.size() > 1) frame.value = frameNode.at(1).as_map().at("Value").get_value_or<float>(1.0f);
+        if(frameNode.size() > 2) frame.inslope = frameNode.at(2).as_map().at("InSlope").get_value_or<float>(0.0f);
+        if(frameNode.size() > 3) frame.outslope = frameNode.at(3).as_map().at("OutSlope").get_value_or<float>(0.0f);
+
+        return frame;
+    }
+
+    void Animation::LoadYAML(std::filesystem::path path){
+        std::fstream doc(path.string(), std::ios::in);
+        auto node = fkyaml::node::deserialize(doc);
+
+        mEnd = node.at("FrameCount").get_value_or<int>(0);
+        mSpeed = node.at("FrameDelay").get_value_or<int>(0);
+        auto seq = node["Joints"].as_seq();
+
+        mJointAnimations.resize(seq.size());
+        for(auto& jointNode : seq){
+            int jointID = jointNode["Joint"].as_int();
+
+            for(auto& key : jointNode["Scale X"].as_seq()){
+                mJointAnimations[jointID].ScaleX.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+            for(auto& key : jointNode["Scale Y"].as_seq()){
+                mJointAnimations[jointID].ScaleY.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+            for(auto& key : jointNode["Scale Z"].as_seq()){
+                mJointAnimations[jointID].ScaleZ.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+            for(auto& key : jointNode["Rotate X"].as_seq()){
+                mJointAnimations[jointID].RotationX.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+            for(auto& key : jointNode["Rotate Y"].as_seq()){
+                mJointAnimations[jointID].RotationY.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+            for(auto& key : jointNode["Rotate Z"].as_seq()){
+                mJointAnimations[jointID].RotationZ.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+            for(auto& key : jointNode["Position X"].as_seq()){
+                mJointAnimations[jointID].PositionX.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+            for(auto& key : jointNode["Position Y"].as_seq()){
+                mJointAnimations[jointID].PositionY.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+            for(auto& key : jointNode["Position Z"].as_seq()){
+                mJointAnimations[jointID].PositionZ.mKeyFrames.push_back(GetFrameFromYAML(key["Frame"].as_seq()));
+            }
+
+        }
     }
 
     void Animation::Load(bStream::CStream* stream){
@@ -1099,17 +1168,17 @@ namespace MDL {
 
         for(int j = 0; j < jointCount; j++){
             JointTrack& joint = mJointAnimations[j];
-            joint.ScaleX.LoadTrackEx(stream, scaleKeyframeOffset, groups[j].ScaleXInfo.BeginIndex, groups[j].ScaleXInfo.FrameCount, true, groups[j].ScaleXInfo.Flags == 0x80);
-            joint.ScaleY.LoadTrackEx(stream, scaleKeyframeOffset, groups[j].ScaleYInfo.BeginIndex, groups[j].ScaleYInfo.FrameCount, true, groups[j].ScaleYInfo.Flags == 0x80);
-            joint.ScaleZ.LoadTrackEx(stream, scaleKeyframeOffset, groups[j].ScaleZInfo.BeginIndex, groups[j].ScaleZInfo.FrameCount, true, groups[j].ScaleZInfo.Flags == 0x80);
+            joint.ScaleX.LoadTrackEx(stream, scaleKeyframeOffset, groups[j].ScaleXInfo.BeginIndex, groups[j].ScaleXInfo.FrameCount, true, groups[j].ScaleXInfo.Flags == 0x00);
+            joint.ScaleY.LoadTrackEx(stream, scaleKeyframeOffset, groups[j].ScaleYInfo.BeginIndex, groups[j].ScaleYInfo.FrameCount, true, groups[j].ScaleYInfo.Flags == 0x00);
+            joint.ScaleZ.LoadTrackEx(stream, scaleKeyframeOffset, groups[j].ScaleZInfo.BeginIndex, groups[j].ScaleZInfo.FrameCount, true, groups[j].ScaleZInfo.Flags == 0x00);
 
-            joint.RotationX.LoadTrackEx(stream, rotationKeyframeOffset, groups[j].RotationXInfo.BeginIndex, groups[j].RotationXInfo.FrameCount, true, groups[j].RotationXInfo.Flags, 2);
-            joint.RotationY.LoadTrackEx(stream, rotationKeyframeOffset, groups[j].RotationYInfo.BeginIndex, groups[j].RotationYInfo.FrameCount, true, groups[j].RotationYInfo.Flags, 2);
-            joint.RotationZ.LoadTrackEx(stream, rotationKeyframeOffset, groups[j].RotationZInfo.BeginIndex, groups[j].RotationZInfo.FrameCount, true, groups[j].RotationZInfo.Flags, 2);
+            joint.RotationX.LoadTrackEx(stream, rotationKeyframeOffset, groups[j].RotationXInfo.BeginIndex, groups[j].RotationXInfo.FrameCount, true, groups[j].RotationXInfo.Flags != 0x00, 2);
+            joint.RotationY.LoadTrackEx(stream, rotationKeyframeOffset, groups[j].RotationYInfo.BeginIndex, groups[j].RotationYInfo.FrameCount, true, groups[j].RotationYInfo.Flags != 0x00, 2);
+            joint.RotationZ.LoadTrackEx(stream, rotationKeyframeOffset, groups[j].RotationZInfo.BeginIndex, groups[j].RotationZInfo.FrameCount, true, groups[j].RotationZInfo.Flags != 0x00, 2);
 
-            joint.PositionX.LoadTrackEx(stream, positionKeyframeOffset, groups[j].PositionXInfo.BeginIndex, groups[j].PositionXInfo.FrameCount, true, groups[j].PositionXInfo.Flags == 0x80);
-            joint.PositionY.LoadTrackEx(stream, positionKeyframeOffset, groups[j].PositionYInfo.BeginIndex, groups[j].PositionYInfo.FrameCount, true, groups[j].PositionYInfo.Flags == 0x80);
-            joint.PositionZ.LoadTrackEx(stream, positionKeyframeOffset, groups[j].PositionZInfo.BeginIndex, groups[j].PositionZInfo.FrameCount, true, groups[j].PositionZInfo.Flags == 0x80);
+            joint.PositionX.LoadTrackEx(stream, positionKeyframeOffset, groups[j].PositionXInfo.BeginIndex, groups[j].PositionXInfo.FrameCount, true, groups[j].PositionXInfo.Flags != 0x00);
+            joint.PositionY.LoadTrackEx(stream, positionKeyframeOffset, groups[j].PositionYInfo.BeginIndex, groups[j].PositionYInfo.FrameCount, true, groups[j].PositionYInfo.Flags != 0x00);
+            joint.PositionZ.LoadTrackEx(stream, positionKeyframeOffset, groups[j].PositionZInfo.BeginIndex, groups[j].PositionZInfo.FrameCount, true, groups[j].PositionZInfo.Flags != 0x00);
 
         }
     }

@@ -222,7 +222,21 @@ void UModelEditContext::LoadAnimation(bStream::CStream* stream){
 }
 
 void UModelEditContext::SaveAnimation(bStream::CStream* stream){
+}
 
+void UModelEditContext::LoadYAML(std::filesystem::path filepath){
+    mActorSkeletalAnimation = std::make_unique<MDL::Animation>();
+    mActorSkeletalAnimation->LoadYAML(filepath);
+}
+
+void UEditorTab::LoadAnimation(std::filesystem::path filepath){
+    if(filepath.empty()){
+        filepath = mLoadedPath;
+    }
+
+    if(mModelContext != nullptr && mModelContext->IsModelType(EModelType::Actor)){
+        mModelContext->LoadYAML(filepath);
+    }
 }
 
 void UEditorTab::SaveTab(std::filesystem::path filepath){
@@ -416,7 +430,7 @@ void UModelEditContext::RenderModel(float dt){
         if(mFurnitureAnimation != nullptr &&  mFurnitureAnimation->Playing()) mFurnitureAnimation->Step(dt);
     } else if(mCurrentModelType == EModelType::Actor && mModelActor != nullptr){
        	mModelActor->Draw(&mvp, 0, false, nullptr, mActorSkeletalAnimation.get());
-        mModelActor->mSkeletonRenderer.Draw(&mCamera);
+        mModelActor->mSkeletonRenderer.Draw(&mCamera, false);
         if(mActorSkeletalAnimation != nullptr &&  mActorSkeletalAnimation->Playing()) mActorSkeletalAnimation->Step(dt);
     }
 
@@ -1515,7 +1529,7 @@ void UContext::RenderMenuBar() {
 
 	if (mModelSelectOpen) {
 		IGFD::FileDialogConfig config { .flags = ImGuiFileDialogFlags_Modal };
-		ImGuiFileDialog::Instance()->OpenDialog("OpenModelDialog", "Open Model", "Archive (*.arc, *.szp){.arc,.szp},Room Model (*.bin){.bin},Actor Model (*.mdl){.mdl}", config);
+		ImGuiFileDialog::Instance()->OpenDialog("OpenModelDialog", "Open Model", "Archive (*.arc, *.szp){.arc,.szp},Room Model (*.bin){.bin},Actor Model (*.mdl){.mdl},Actor Animation (*.yml){.yml}", config);
 	}
 
 	if (mModelSelectSaveAs && mSelectedTab != nullptr) {
@@ -1535,9 +1549,12 @@ void UContext::RenderMenuBar() {
 	if (ImGuiFileDialog::Instance()->Display("OpenModelDialog", ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
 		if (ImGuiFileDialog::Instance()->IsOk()) {
 			std::string FilePath = ImGuiFileDialog::Instance()->GetFilePathName();
-			mTabs.push_back(std::make_shared<UEditorTab>(std::filesystem::path(FilePath)));
-			mSelectedTab = mTabs.back();
-
+		    if(FilePath.ends_with("yml") && mSelectedTab != nullptr){
+				mSelectedTab->LoadAnimation(FilePath);
+			} else {
+			    mTabs.push_back(std::make_shared<UEditorTab>(std::filesystem::path(FilePath)));
+			    mSelectedTab = mTabs.back();
+			}
 			mModelSelectOpen = false;
 		} else {
 			mModelSelectOpen = false;

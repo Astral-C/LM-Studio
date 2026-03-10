@@ -67,6 +67,7 @@ public:
     void SaveModel(bStream::CStream* stream);
     void SaveAnimation(bStream::CStream* stream);
     void LoadAnimation(bStream::CStream* stream);
+    void LoadYAML(std::filesystem::path filepath);
 
     void SelectNode(int32_t id);
 
@@ -105,6 +106,7 @@ public:
 
     inline void ViewportClicked(int32_t id);
     void SaveTab(std::filesystem::path filepath="");
+    void LoadAnimation(std::filesystem::path filepath="");
     void SaveAnimation(std::filesystem::path filepath="");
     void OpenQueuedModel();
 

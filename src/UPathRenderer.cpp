@@ -150,7 +150,11 @@ void CPathRenderer::UpdateData(){
 }
 
 void CPathRenderer::Draw(UCamera *Camera, bool enableDepth) {
-    if(enableDepth) glEnable(GL_DEPTH_TEST);
+    if(enableDepth){
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
     glDepthFunc(GL_LESS);
 
     glEnable(GL_BLEND);
@@ -181,8 +185,14 @@ void CPathRenderer::Draw(UCamera *Camera, bool enableDepth) {
     start = 0;
     glUniform1i(mPointModeUniform, 0);
     for(auto& line : mPaths){
-        glDrawArrays(GL_LINE_STRIP, start, line.size());
+        glDrawArrays(GL_LINES, start, line.size());
         start += line.size();
+    }
+
+    if(enableDepth){
+        glDisable(GL_DEPTH_TEST);
+    } else {
+        glEnable(GL_DEPTH_TEST);
     }
 
     glBindVertexArray(0);

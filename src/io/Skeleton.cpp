@@ -4,7 +4,10 @@
 #include "glm/gtc/quaternion.hpp"
 #include "glm/gtx/matrix_decompose.hpp"
 #include "glm/gtx/matrix_interpolation.hpp"
+#include "glm/matrix.hpp"
 #include "io/MdlIO.hpp"
+#include "glm/gtx/string_cast.hpp"
+#include <format>
 #include <memory>
 
 namespace Rig {
@@ -23,9 +26,7 @@ Skeleton::~Skeleton(){}
 
 void Skeleton::Reset(){
     for(auto& bone : mBones){
-        bone->mAnimationState.mPosition = bone->mPosition;
-        bone->mAnimationState.mRotation = bone->mRotation;
-        bone->mAnimationState.mScale = bone->mScale;
+        bone->mAnimation = glm::mat4(1.0f);
     }
 
     Update();
@@ -43,15 +44,10 @@ void Skeleton::Update(){
 }
 
 glm::mat4 Skeleton::GetWorldMatrix(std::shared_ptr<Bone> bone){
-    glm::mat4 transform(1.0f);
-    transform = glm::scale(transform, bone->mAnimationState.mScale);
-    transform *= glm::toMat4(bone->mAnimationState.mRotation);
-    transform = glm::translate(transform, bone->mAnimationState.mPosition);
-
     if(bone->ParentIndex != -1){
-        return transform * GetWorldMatrix(bone->mParent);
+        return GetWorldMatrix(bone->mParent) * bone->mLocal * bone->mAnimation;
     } else {
-        return transform;
+        return bone->mLocal * bone->mAnimation;
     }
 }
 
@@ -59,27 +55,17 @@ void Skeleton::ConvertWorldToLocalSpace(){
     for(auto& bone : mBones){
         ConvertWorldToLocalSpace(bone);
     }
+    for(int i = 0; i < mBones.size(); i++){
+        std::cout << std::format("======Bone {}======\n{}\n", i, glm::to_string(mBones[i]->mLocal)) << std::endl;
+    }
     Reset();
 }
 
 void Skeleton::ConvertWorldToLocalSpace(std::shared_ptr<Bone> bone){
     if(bone->ParentIndex != -1){
-        glm::mat4 mat = bone->GetTransform() * glm::inverse(GetBoneTransform(bone->mParent));
-        glm::vec3 skew;
-        glm::vec4 persp;
-        glm::decompose(mat, bone->mScale, bone->mRotation, bone->mPosition, skew, persp);
-    }
-}
-
-
-glm::mat4 Skeleton::GetBoneTransform(std::shared_ptr<Bone> bone){
-    if(bone == nullptr){
-        return glm::mat4(1.0f);
-    }
-    if(bone->ParentIndex == -1){
-        return bone->GetTransform();
+        bone->mLocal = glm::inverse(bone->mParent->mTransform) * bone->mTransform;
     } else {
-        return bone->GetTransform() * GetBoneTransform(mBones[bone->ParentIndex]);
+        bone->mLocal = bone->mTransform;
     }
 }
 
